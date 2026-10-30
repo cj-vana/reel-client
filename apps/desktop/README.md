@@ -1,6 +1,6 @@
 # Reel for desktop
 
-Browse your Jellyfin library, continue watching, and play films and series in a dedicated desktop window. Reel includes keyboard playback controls, audio and subtitle selection, quality options, an episode browser, Skip Intro when your server provides timing, and optional automatic episode playback.
+Browse your Jellyfin library, continue watching, and play films and series in a dedicated desktop window. Reel includes keyboard playback controls, audio and subtitle selection, quality options, an episode browser, Skip Intro and Next episode at the credits (found from the episodes' audio when your server has no markers), and optional automatic episode playback.
 
 ## Build and run
 

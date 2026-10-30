@@ -16,7 +16,7 @@ Reel shares its look across the Apple apps, the web player and the TV clients. E
 
 Android is not supported.
 
-Skip Intro needs intro markers from your server. Audio tracks, subtitles, transcoding, HDR and surround sound depend on your media, your server, the operating system and the playback hardware. Reel does not promise a particular receiver format from codec information alone.
+On Roku, Skip Intro needs intro markers from your server; every other app also finds intros and credits from the episodes' audio. Audio tracks, subtitles, transcoding, HDR and surround sound depend on your media, your server, the operating system and the playback hardware. Reel does not promise a particular receiver format from codec information alone.
 
 ## Known limits
 

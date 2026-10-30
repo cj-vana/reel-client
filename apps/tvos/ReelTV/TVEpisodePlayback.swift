@@ -56,6 +56,8 @@ struct TVNextEpisodeCountdown {
     private(set) var episodeLoading = false
     private(set) var episodeError: String?
     private(set) var intro: MediaSegment?
+    /// The credits are rolling and a next episode is ready, so the player offers it.
+    private(set) var inCredits = false
     private(set) var browserPresented = false
     private(set) var countdown = TVNextEpisodeCountdown()
     private(set) var switching = false
@@ -75,6 +77,9 @@ struct TVNextEpisodeCountdown {
     @ObservationIgnored private var seasonsGeneration = UUID()
     @ObservationIgnored private var seasonGeneration = UUID()
     @ObservationIgnored private var segments: [MediaSegment] = []
+    /// The intro and credits found from the audio, for kinds the server did not mark.
+    @ObservationIgnored private var foundSegments: [MediaSegment] = []
+    @ObservationIgnored private var detectionTask: Task<Void, Never>?
     @ObservationIgnored private var skipped: Set<String> = []
     @ObservationIgnored private var monitor: Task<Void, Never>?
     @ObservationIgnored private var metadataTask: Task<Void, Never>?
@@ -94,7 +99,7 @@ struct TVNextEpisodeCountdown {
     func load(owner: TVCoordinator, presentation: UUID) async {
         invalidate()
         previous = nil; next = nil; neighborsError = nil; seasons = []; episodes = []; seasonID = ""
-        segments = []; skipped = []; browserPresented = false; countdown = TVNextEpisodeCountdown()
+        segments = []; foundSegments = []; inCredits = false; skipped = []; browserPresented = false; countdown = TVNextEpisodeCountdown()
         loading = false; neighborsLoading = false; episodeLoading = false
         self.owner = owner; self.presentation = presentation; accountRevision = owner.session.revision
         item = owner.playback.activeItem; api = owner.session.api
@@ -119,6 +124,8 @@ struct TVNextEpisodeCountdown {
             async let neighborLoad: Void = self.loadNeighbors()
             async let segmentLoad: Void = self.loadSegments()
             _ = await (neighborLoad, segmentLoad)
+            // The scan runs on its own, so loading never waits for it.
+            self.detectionTask = Task { [weak self] in await self?.findIntroAndCredits() }
         }
         metadataTask = metadata
         await metadata.value
@@ -155,6 +162,26 @@ struct TVNextEpisodeCountdown {
             guard !Task.isCancelled, generation == current, ownsPresentation else { return }
             segments = page.Items
         } catch { /* Segment metadata is optional; never infer an intro from elapsed time. */ }
+    }
+
+    /// Fills in the intro and credits the server did not mark by comparing this episode's audio with a neighbor's.
+    private func findIntroAndCredits() async {
+        guard ownsPresentation, let item, let api, item.Type == "Episode",
+              defaults.object(forKey: "findMarkers") == nil || defaults.bool(forKey: "findMarkers") else { return }
+        let neighbors = [next, previous].compactMap { $0 }
+        guard !neighbors.isEmpty else { return }
+        let current = generation
+        func apply(_ found: FoundMarkers) {
+            guard !Task.isCancelled, generation == current, ownsPresentation else { return }
+            foundSegments = found.segments(runtimeTicks: item.RunTimeTicks, server: segments)
+        }
+        apply(MarkerDetector.shared.known(accountID: MarkerDetector.accountID(api), item: item))
+        let intro = !segments.contains { $0.Type == "Intro" }, credits = next != nil && !segments.contains { $0.Type == "Outro" }
+        guard intro || credits else { return }
+        // The picture starts first; the scan then downloads a few megabytes of low-quality audio.
+        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+        guard let found = try? await MarkerDetector.shared.detect(api: api, item: item, neighbors: neighbors, intro: intro, credits: credits) else { return }
+        apply(found)
     }
 
     func openBrowser() {
@@ -257,9 +284,14 @@ struct TVNextEpisodeCountdown {
         guard let owner else { return }
         let playback = owner.playback
         let ready = !playback.preparing && !playback.ended && playback.error == nil && !owner.changingSubtitles && !switching
-        let candidate = ready ? TVEpisodeSequence.intro(in: segments, seconds: playback.player.currentTime().seconds, duration: playback.player.currentItem?.duration.seconds ?? .nan) : nil
+        let seconds = playback.player.currentTime().seconds, duration = playback.player.currentItem?.duration.seconds ?? .nan
+        let candidate = ready ? TVEpisodeSequence.intro(in: segments + foundSegments, seconds: seconds, duration: duration) : nil
         let visible = owner.preferences.segmentMode("Intro") != .none ? candidate : nil
         if intro?.id != visible?.id { intro = visible }
+        let credits = ready && next != nil && (segments + foundSegments).contains {
+            $0.Type == "Outro" && seconds.isFinite && seconds >= Double($0.StartTicks) / ticksPerSecond && seconds < Double($0.EndTicks) / ticksPerSecond
+        }
+        if inCredits != credits { inCredits = credits }
         let foreground = active && UIApplication.shared.applicationState == .active
         if let intro, owner.preferences.segmentMode("Intro") == .auto, playback.isPlaying, foreground, !browserPresented, !skipped.contains(intro.id) { skipIntro() }
         let shouldPlay = countdown.update(endedID: playback.ended ? playback.endedSessionID : nil,
@@ -271,10 +303,10 @@ struct TVNextEpisodeCountdown {
     func invalidate() {
         generation = UUID(); seasonsGeneration = UUID(); seasonGeneration = UUID()
         monitor?.cancel(); monitor = nil; browserTask?.cancel(); browserTask = nil
-        metadataTask?.cancel(); metadataTask = nil
+        metadataTask?.cancel(); metadataTask = nil; detectionTask?.cancel(); detectionTask = nil
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
         lifecycleObservers = []
-        countdown.cancel(); intro = nil
+        countdown.cancel(); intro = nil; inCredits = false
         owner = nil; api = nil
     }
 }

@@ -299,6 +299,7 @@ enum SavedAccountStorageError: LocalizedError {
             try services.removeCredentials(storedAccount, updated)
         } catch { notice = "The Jellyfin sign-in was removed, but additional saved credentials need another cleanup attempt: " + error.localizedDescription }
         localCleanup()
+        MarkerStore.shared.forget(accountID: storedAccount.id)
         afterRemove?(storedAccount)
         if wasActive { revision = UUID() }
         await ArtworkPipeline.shared.clear()

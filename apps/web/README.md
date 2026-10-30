@@ -28,7 +28,7 @@ For a static deployment, run `npm run build` and serve `dist/`. See the [web and
 
 Home brings together Continue watching, Next up and recent additions. Library and Search offer filters, sorting, grid and list views. Browse choices stay separate for each server, account and collection.
 
-The player has previous and next episode controls, a season browser, a cancellable next-episode countdown, audio and subtitle choices, chapters and playback speed. Skip Intro appears when the server supplies valid intro markers. TVs use one remote-controlled transport; browsers retain their native video controls.
+The player has previous and next episode controls, a season browser, a cancellable next-episode countdown, audio and subtitle choices, chapters and playback speed. Skip Intro and a Next episode button at the credits use the server's Intro and Outro markers when it has them. Otherwise Reel streams a low-quality audio copy of the opening and closing minutes of the episode and a neighbor, and treats the longest stretch of audio they share as the theme (`src/audio-fingerprint.ts`, `src/intro-detection.ts`). Settings can turn this off, or skip intros automatically. TVs use one remote-controlled transport; browsers retain their native video controls.
 
 Save adds a title to Jellyfin favorites. Mark watched changes its server status; actions affecting a collection or several titles ask for confirmation. Watch progress syncs automatically; turn on Private viewing in Settings to stop it.
 
