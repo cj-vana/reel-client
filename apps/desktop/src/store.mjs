@@ -6,7 +6,9 @@ const QUALITY=[120000000,20000000,8000000,2000000];
 const fail=code=>({ok:false,code});
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;
 const fields=(value,names)=>plain(value)&&Object.keys(value).length===names.length&&names.every(key=>Object.hasOwn(value,key));
-const preferenceFields=(value,names)=>fields(value,names)||fields(value,[...names,'autoplay'])&&typeof value.autoplay==='boolean';
+// Switches added after the first release are optional, so older preference files still load.
+const OPTIONAL_SWITCHES=['autoplay','markers','autoSkip'];
+const preferenceFields=(value,names)=>{if(!plain(value))return false;const present=OPTIONAL_SWITCHES.filter(key=>Object.hasOwn(value,key));return present.every(key=>typeof value[key]==='boolean')&&fields(value,[...names,...present]);};
 const revision=value=>Number.isSafeInteger(value)&&value>=0&&value<=Number.MAX_SAFE_INTEGER;
 const text=(value,max,nonempty=true)=>typeof value==='string'&&value.length<=max&&(!nonempty||value.length>0)&&!/[\x00-\x1f\x7f]/.test(value);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -32,7 +34,7 @@ export class DesktopStore {
   constructor(directory,cryptoProvider,{directorySync=syncDirectory,availabilityTimeoutMs=5000}={}){this.directory=resolve(directory);this.crypto=cryptoProvider;this.directorySync=directorySync;this.availabilityTimeoutMs=availabilityTimeoutMs;}
   queue=Promise.resolve();state='unavailable';connectionRevision=0;preferenceRevision=0;
   quarantined=false;
-  connections={accounts:[],activeId:null};preferences={quality:120000000,history:true,autoplay:true};deviceId=randomUUID();
+  connections={accounts:[],activeId:null};preferences={quality:120000000,history:true,autoplay:true,markers:true,autoSkip:false};deviceId=randomUUID();
   initialize(){this.initialization??=this.load();return this.initialization.then(()=>this.snapshot());}
   async load(){
     try{
@@ -40,7 +42,7 @@ export class DesktopStore {
       if(!info.isDirectory()||info.isSymbolicLink()||process.getuid&&info.uid!==process.getuid()||process.platform!=='win32'&&(info.mode&0o077)!==0)throw new Error('Invalid store directory');
       this.canonical=await realpath(this.directory);this.directory=this.canonical;
       const prefs=await this.readOwned('preferences.json',16384);
-      if(prefs){const value=JSON.parse(prefs.toString());if(!preferenceFields(value,['schema','revision','deviceId','quality','history'])||value.schema!==1||!revision(value.revision)||!text(value.deviceId,80)||!QUALITY.includes(value.quality)||typeof value.history!=='boolean')throw new Error('Invalid preferences');this.preferenceRevision=value.revision;this.deviceId=value.deviceId;this.preferences={quality:value.quality,history:value.history,autoplay:value.autoplay??true};this.preferenceHash=hash(prefs);}
+      if(prefs){const value=JSON.parse(prefs.toString());if(!preferenceFields(value,['schema','revision','deviceId','quality','history'])||value.schema!==1||!revision(value.revision)||!text(value.deviceId,80)||!QUALITY.includes(value.quality)||typeof value.history!=='boolean')throw new Error('Invalid preferences');this.preferenceRevision=value.revision;this.deviceId=value.deviceId;this.preferences={quality:value.quality,history:value.history,autoplay:value.autoplay??true,markers:value.markers??true,autoSkip:value.autoSkip??false};this.preferenceHash=hash(prefs);}
       if(!prefs){const bytes=Buffer.from(JSON.stringify({schema:1,revision:0,deviceId:this.deviceId,...this.preferences}));const saved=await this.atomic('preferences.json',bytes,null,()=>true);if(!saved.ok)throw new Error('Preferences initialization failed');this.preferenceHash=hash(bytes);}
       const ciphertext=await this.readOwned('connections.vault',524288);this.cipherHash=ciphertext?hash(ciphertext):null;
       let availabilityTimer;
@@ -79,8 +81,8 @@ export class DesktopStore {
   savePreferences(value,context){
     if(!validPreferenceWrite(value))return Promise.resolve(fail('invalid'));const input={...value};
     return this.enqueue(async()=>{await this.initialize();if(this.quarantined)return fail('uncertain');if(!this.canonical)return fail('unavailable');if(!context())return fail('closing');if(input.expectedRevision!==this.preferenceRevision)return fail('conflict');
-      const next={schema:1,revision:this.preferenceRevision+1,deviceId:this.deviceId,quality:input.quality,history:input.history,autoplay:input.autoplay??true},bytes=Buffer.from(JSON.stringify(next));
-      try{const result=await this.atomic('preferences.json',bytes,this.preferenceHash??null,context);if(!result.ok)return result;this.preferenceHash=hash(bytes);this.preferenceRevision=next.revision;this.preferences={quality:next.quality,history:next.history,autoplay:next.autoplay};return{ok:true,revision:next.revision};}catch{return fail('io');}
+      const next={schema:1,revision:this.preferenceRevision+1,deviceId:this.deviceId,quality:input.quality,history:input.history,autoplay:input.autoplay??true,markers:input.markers??true,autoSkip:input.autoSkip??false},bytes=Buffer.from(JSON.stringify(next));
+      try{const result=await this.atomic('preferences.json',bytes,this.preferenceHash??null,context);if(!result.ok)return result;this.preferenceHash=hash(bytes);this.preferenceRevision=next.revision;this.preferences={quality:next.quality,history:next.history,autoplay:next.autoplay,markers:next.markers,autoSkip:next.autoSkip};return{ok:true,revision:next.revision};}catch{return fail('io');}
     });
   }
   async atomic(name,bytes,previousHash,context){

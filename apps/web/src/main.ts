@@ -1,7 +1,8 @@
 import './styles/index.css';
 import { setupPWA } from './pwa.ts';
 import { featuredTitles, viewingProgress } from './discovery.ts';
-import { loadEpisodeContext, loadSeasonEpisodes, loadIntroSegment, type EpisodeContext } from './playback-extras.ts';
+import { loadEpisodeContext, loadSeasonEpisodes, loadServerMarkers, type EpisodeContext, type Markers } from './playback-extras.ts';
+import { browserDecoder, MarkerDetector, MarkerStore } from './intro-detection.ts';
 import { removeConnectionAndRevoke, revokeUnusedSession } from './connection-actions.ts';
 import { refreshWatchedDetail } from './detail-status.ts';
 import { DesktopBrowsePreferences } from './desktop-browse.ts';
@@ -43,6 +44,9 @@ const storage = desktop?.storage ?? browserStorage();
 const connections = new Connections(storage, desktop?.persistence);
 const device = deviceId(storage);
 const artwork = new ArtworkCache();
+// Engines without a Web Audio decoder keep the server's markers only.
+const markerDecoder = browserDecoder();
+const markerDetector = markerDecoder ? new MarkerDetector(markerDecoder, new MarkerStore(storage)) : undefined;
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const items = new Map<string, MediaItem>();
 const positions = new Map<string, number>();
@@ -61,6 +65,9 @@ let homeFeaturedID = '';
 let nextEpisode: MediaItem | undefined;
 let previousEpisode: MediaItem | undefined;
 let autoNext = storage.getItem('reel.autoplay') !== 'false';
+// Intros and credits are found from the episodes' audio unless turned off; skipping them on their own is opt-in.
+let findMarkers = storage.getItem('reel.markers') !== 'false';
+let autoSkipIntro = storage.getItem('reel.autoskip') === 'true';
 let currentPlayingItem: MediaItem | undefined;
 let playingId = 0;
 let playing = false;
@@ -162,6 +169,8 @@ app.innerHTML = `<div class="app-shell"><aside id="rail" aria-label="Main naviga
     <div class="screen"><video id="video" ${layout === 'tv' ? '' : 'controls'} playsinline></video><div id="player-state" class="player-state" role="status" aria-live="polite"></div></div>
     <div id="player-sync" class="player-sync" role="status"></div>
     <button id="player-skip-intro" class="button quiet" data-action="skip-intro" data-player-contextual hidden>Skip intro</button>
+    <button id="player-next-up" class="button quiet" data-action="play-next" data-player-contextual hidden>Next episode</button>
+    <div id="player-intro-notice" class="player-intro-notice" role="status" data-player-contextual hidden><span>Intro skipped</span><button class="button quiet" data-action="watch-intro">Watch it</button></div>
     <footer class="player-companion" data-player-overlay>
       <div class="transport" id="tv-transport" ${layout === 'tv' ? '' : 'hidden'}>
         <div class="player-timeline"><span id="player-elapsed">0:00</span><input id="player-seek" type="range" min="0" max="0" step="1" value="0" aria-label="Playback position" disabled /><span id="player-duration">0:00</span></div>
@@ -196,7 +205,14 @@ let episodeContext: EpisodeContext | undefined;
 let episodeLoading = false, episodeError = '';
 let extraController: AbortController | undefined, seasonController: AbortController | undefined;
 let stopPlayerArt: (() => void) | undefined, stopEndedArt: (() => void) | undefined;
-let introSegment: { start: number; end: number } | undefined;
+// The server's markers win; markers found from the audio fill in what the server does not have.
+let serverMarkers: Markers = {}, foundMarkers: Markers = {};
+let introAutoSkipped = false;
+let introNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+function markers(): Markers {
+  const intro = serverMarkers.intro ?? foundMarkers.intro, credits = serverMarkers.credits ?? foundMarkers.credits;
+  return { ...(intro ? { intro } : {}), ...(credits !== undefined ? { credits } : {}) };
+}
 let autoNextTimer: ReturnType<typeof setTimeout> | undefined;
 let autoNextCancelled = false;
 let playbackSelection: PlaybackSelection | undefined;
@@ -260,7 +276,8 @@ function beginAutoNext(): void {
 }
 function closePlayerExtras(): void {
   cancelAutoNext(); autoNextCancelled = false; playerTransitionPending = false; playbackChange = undefined; extraController?.abort(); seasonController?.abort(); stopPlayerArt?.(); stopPlayerArt = undefined;
-  introSegment = undefined; episodeContext = undefined; previousEpisode = undefined; nextEpisode = undefined;
+  serverMarkers = {}; foundMarkers = {}; introAutoSkipped = false; hideIntroNotice();
+  episodeContext = undefined; previousEpisode = undefined; nextEpisode = undefined;
   episodeLoading = false; episodeError = '';
 }
 function updateEpisodeControls(): void {
@@ -294,7 +311,9 @@ async function loadPlayerExtras(item: MediaItem, generation: number): Promise<vo
   extraController?.abort(); const controller = new AbortController(); extraController = controller;
   const provider = api(), account = connections.active;
   const current = () => !isClosing() && playing && !controller.signal.aborted && generation === playingId && account?.id === connections.active?.id && account?.token === connections.active?.token && currentPlayingItem?.Id === item.Id;
-  void track(loadIntroSegment(provider, item, controller.signal).then(segment => { if (current()) { introSegment = segment; updateTransport(); } }).catch(() => undefined));
+  const fromServer = loadServerMarkers(provider, item, controller.signal).catch((): Markers => ({}));
+  void track(fromServer.then(found => { if (current()) { serverMarkers = found; updateTransport(); } }));
+  if (account && markerDetector && findMarkers) { foundMarkers = markerDetector.known(account.id, item); updateTransport(); }
   if (item.Type !== 'Episode' || !item.SeriesId) return;
   episodeLoading = true; episodeError = ''; renderPlayerEpisodes();
   try {
@@ -302,8 +321,37 @@ async function loadPlayerExtras(item: MediaItem, generation: number): Promise<vo
     if (!current()) return;
     episodeContext = context; previousEpisode = context.previous; nextEpisode = context.next;
     remember([...context.episodes, ...context.seasons, ...[context.previous, context.next].filter((value): value is MediaItem => !!value)]);
+    if (account && markerDetector && findMarkers) void track(scanMarkers(markerDetector, provider, account.id, item, context, fromServer, controller.signal, current));
   } catch (error) { if (current()) episodeError = error instanceof Error ? error.message : 'Episodes could not be loaded. Try again.'; }
   finally { if (current()) { episodeLoading = false; updateEpisodeControls(); renderPlayerEpisodes(); if (video.ended && playerElement.dataset.state === 'ended') { const action = (document.activeElement as HTMLElement)?.dataset.action; renderEndedPlayer(); if (action) playerState.querySelector<HTMLElement>('[data-action="' + action + '"]')?.focus(); beginAutoNext(); } } }
+}
+// Fills in the intro and credits the server did not mark by comparing this episode's audio with a neighbor's.
+async function scanMarkers(detector: MarkerDetector, provider: JellyfinAPI, accountId: string, item: MediaItem, context: EpisodeContext, fromServer: Promise<Markers>, signal: AbortSignal, current: () => boolean): Promise<void> {
+  // The next episode first: what is learned about it is ready when it plays.
+  const neighbors = [context.next, context.previous].filter((episode): episode is MediaItem => !!episode);
+  const server = await fromServer;
+  const want = { intro: !server.intro, credits: server.credits === undefined && !!context.next };
+  if (!neighbors.length || !want.intro && !want.credits || !current()) return;
+  // The picture starts first; the scan then downloads a few megabytes of low-quality audio.
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  if (!current() || !findMarkers) return;
+  try {
+    const found = await detector.detect(provider, accountId, item, neighbors, want, signal);
+    if (current() && findMarkers) { foundMarkers = found; updateTransport(); }
+  } catch { /* The markers are extras; playback carries on without them. */ }
+}
+function showIntroNotice(from: number): void {
+  const notice = document.querySelector<HTMLElement>('#player-intro-notice')!;
+  notice.dataset.from = String(from); notice.hidden = false;
+  if (layout === 'tv' && formatPanel.hidden && playerElement.contains(document.activeElement)) notice.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+  clearTimeout(introNoticeTimer); introNoticeTimer = setTimeout(hideIntroNotice, 6000);
+}
+function hideIntroNotice(): void {
+  clearTimeout(introNoticeTimer); introNoticeTimer = undefined;
+  const notice = document.querySelector<HTMLElement>('#player-intro-notice');
+  if (!notice || notice.hidden) return;
+  if (notice.contains(document.activeElement)) video.focus({ preventScroll: true });
+  notice.hidden = true;
 }
 async function changePlayerSeason(seasonId: string): Promise<void> {
   const item = currentPlayingItem, context = episodeContext, generation = playingId, account = connections.active;
@@ -328,12 +376,22 @@ function updateTransport(): void {
   seekControl.style.setProperty('--progress', (duration ? shownPosition / duration * 100 : 0) + '%');
   document.querySelector('#player-elapsed')!.textContent = playbackTime(shownPosition);
   document.querySelector('#player-duration')!.textContent = video.duration === Infinity ? 'Live' : playbackTime(duration);
+  const { intro, credits } = markers();
   const skip = document.querySelector<HTMLElement>('#player-skip-intro')!, skipWasHidden = skip.hidden;
-  skip.hidden = disabled || !introSegment || !duration || introSegment.end > duration || position < introSegment.start || position >= introSegment.end;
-  // TV: Skip intro takes focus when it appears, and hands it back to the picture when it goes.
-  if (layout === 'tv' && skipWasHidden !== skip.hidden && formatPanel.hidden) {
-    if (!skip.hidden && playerElement.contains(document.activeElement)) skip.focus({ preventScroll: true });
-    else if (skip.hidden && document.activeElement === skip) video.focus({ preventScroll: true });
+  const next = document.querySelector<HTMLElement>('#player-next-up')!, nextWasHidden = next.hidden;
+  const inIntro = !disabled && !!intro && !!duration && intro.end <= duration && position >= intro.start && position < intro.end;
+  // Skipping on its own happens once per playback, so Watch it (or seeking back) plays the intro.
+  const skipNow = inIntro && autoSkipIntro && !introAutoSkipped && !scrubbing && !video.paused && !playerTransitionPending;
+  if (skipNow && intro) { introAutoSkipped = true; player.seek(intro.end); showIntroNotice(position); }
+  skip.hidden = !inIntro || skipNow;
+  next.hidden = disabled || playerTransitionPending || !nextEpisode || credits === undefined || !duration || credits >= duration || position < credits || position >= duration - 0.5;
+  // TV: these buttons take focus when they appear, and hand it back to the picture when they go.
+  if (layout === 'tv' && formatPanel.hidden) {
+    for (const [control, wasHidden] of [[skip, skipWasHidden], [next, nextWasHidden]] as const) {
+      if (wasHidden === control.hidden) continue;
+      if (!control.hidden && playerElement.contains(document.activeElement)) control.focus({ preventScroll: true });
+      else if (control.hidden && document.activeElement === control) video.focus({ preventScroll: true });
+    }
   }
   const toggle = playerElement.querySelector<HTMLButtonElement>('[data-action="toggle-play"]')!;
   toggle.innerHTML = icon(video.paused ? 'play' : 'pause') + '<span>Play / pause</span>';
@@ -382,7 +440,7 @@ player.onState = (state, message) => {
     if (change && change.generation === playingId && change.accountId === connections.active?.id && change.token === connections.active?.token) {
       if (quality !== change.desired.bitrate) {
         quality = change.desired.bitrate; storage.setItem('reel.quality', String(quality));
-        if (desktop) void track(desktop.savePreferences(quality, history, autoNext)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
+        saveDesktopPreferences();
       }
       playbackChange = undefined;
     }
@@ -1278,7 +1336,7 @@ function renderConnections(): void {
 }
 
 function renderSettings(): void {
-  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p><p class="field-note">Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.</p></section></div>`);
+  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p><label class="checkbox switch"><span>Find intros and credits</span><input id="find-markers" type="checkbox" role="switch" ${findMarkers && markerDetector ? 'checked' : ''} ${markerDetector ? '' : 'disabled'} /></label><p>${markerDetector ? 'When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes to find them. Your server streams a low-quality copy of that audio to do it.' : 'This device cannot read episode audio, so only intros your server marks can be skipped.'}</p><label class="checkbox switch"><span>Skip intros automatically</span><input id="auto-skip-intro" type="checkbox" role="switch" ${autoSkipIntro ? 'checked' : ''} /></label></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p><p class="field-note">Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.</p></section></div>`);
 }
 
 async function liveTV(generation: number, signal: AbortSignal): Promise<void> {
@@ -1447,7 +1505,7 @@ app.addEventListener('click', event => {
       }
       else if (action === 'switch-connection') { setConnectionBusy(true); target.setAttribute('disabled', ''); try { const closed = await player.closeAndDrain(); if (!closed.resourcesComplete) throw new Error('Playback is still closing. Try again in a moment.'); if (!isClosing()) await connections.switch(id!); } finally { setConnectionBusy(false); } }
       else if (action === 'remove-connection') { setConnectionBusy(true); target.setAttribute('disabled', ''); try { const account = connections.all.find(value => value.id === id); if (account) { const released = account.id === connections.activeId ? (await player.closeAndDrain()).resourcesComplete : await player.drainAccountResources(account.id); if (!released) throw new Error('Playback is still closing. Try sign-out again in a moment.'); } if (isClosing()) return; await removeConnectionAndRevoke({ account, remove: () => connections.remove(id!), remaining: () => connections.all,
-          afterRemove: async removed => { if (!hasBrowseAlias(removed, connections.all)) { try { await browser.preferences.removeAccount({ server: removed.server, userId: removed.userId }); } catch (error) { toast(error instanceof Error ? error.message : 'Signed out. Browse choices could not be removed from this device.'); } } },
+          afterRemove: async removed => { markerDetector?.store.forget(removed.id); if (!hasBrowseAlias(removed, connections.all)) { try { await browser.preferences.removeAccount({ server: removed.server, userId: removed.userId }); } catch (error) { toast(error instanceof Error ? error.message : 'Signed out. Browse choices could not be removed from this device.'); } } },
           revoke: removed => new JellyfinAPI(removed, removed.server, device, config.previewMode, history).request<void>('Sessions/Logout', { method: 'POST' }).catch(() => toast('Signed out here. The server was unavailable to revoke its session.'))
         }); } finally { setConnectionBusy(false); } }
       else if (action === 'format') { selectPlayerPanel('options'); showFormat(true); }
@@ -1462,7 +1520,8 @@ app.addEventListener('click', event => {
       else if (action === 'retry-player-episodes') { if (episodeContext) await changePlayerSeason(episodeContext.selectedSeason); else if (currentPlayingItem) await loadPlayerExtras(currentPlayingItem, playingId); }
       else if (action === 'player-episode' && id && episodeContext?.episodes.some(episode => episode.Id === id)) { cancelAutoNext(); if (id === currentPlayingItem?.Id) showFormat(false); else await playItem(id); }
       else if (action === 'play-previous' && previousEpisode) await playItem(previousEpisode.Id, true);
-      else if (action === 'skip-intro' && introSegment && Number.isFinite(video.duration) && introSegment.end <= video.duration && video.currentTime >= introSegment.start && video.currentTime < introSegment.end) { player.seek(introSegment.end); updateTransport(); }
+      else if (action === 'skip-intro') { const intro = markers().intro; if (intro && Number.isFinite(video.duration) && intro.end <= video.duration && video.currentTime >= intro.start && video.currentTime < intro.end) { player.seek(intro.end); updateTransport(); } }
+      else if (action === 'watch-intro') { const from = Number(document.querySelector<HTMLElement>('#player-intro-notice')?.dataset.from); hideIntroNotice(); if (Number.isFinite(from)) { player.seek(from); updateTransport(); } }
       else if (action === 'cancel-autoplay') cancelAutoNext(true);
       else if (action === 'close-format') showFormat(false);
       else if (action === 'close-player') await closePlayer();
@@ -1534,15 +1593,17 @@ app.addEventListener('change', event => {
   if (field.id === 'browse-genre') void track(browser.change({ genreId: field.value }));
   if (field.id === 'browse-watch' && (field.value === 'Any' || field.value === 'Watched' || field.value === 'Unwatched')) void track(browser.change({ watchStatus: field.value }));
   if (field.id === 'browse-library') void navigate({ ...route, library: field.value, scrollY: 0, focus: undefined, focusId: 'browse-library' }, false);
-  if (field.id === 'quality') { quality = Number(field.value); storage.setItem('reel.quality', String(quality)); if (desktop) void track(desktop.savePreferences(quality, history, autoNext)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); }); }
+  if (field.id === 'quality') { quality = Number(field.value); storage.setItem('reel.quality', String(quality)); saveDesktopPreferences(); }
   // The control reads "Private viewing", so on means progress is not sent; the stored value still means "send".
-  if (field.id === 'history') { history = !field.checked; if (!history) player.reports.discard(); storage.setItem('reel.history', String(history)); updateAPI(); if (desktop) void track(desktop.savePreferences(quality, history, autoNext)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); }); }
+  if (field.id === 'history') { history = !field.checked; if (!history) player.reports.discard(); storage.setItem('reel.history', String(history)); updateAPI(); saveDesktopPreferences(); }
   if (['player-quality', 'player-audio', 'player-subtitles', 'player-version'].includes(field.id) && playbackSelection && !field.disabled) {
     const next = field.id === 'player-version' ? selectPlaybackSource(playbackSelection, field.value) : { ...playbackSelection, [field.id === 'player-quality' ? 'bitrate' : field.id === 'player-audio' ? 'audio' : 'subtitle']: field.value === '' ? undefined : Number(field.value) };
     changePlaybackSettings(next);
   }
   if (field.id === 'player-season') void track(changePlayerSeason(field.value));
-  if (field.id === 'player-autoplay') { autoNext = field.checked; storage.setItem('reel.autoplay', String(autoNext)); if (!autoNext) cancelAutoNext(true); if (desktop) void track(desktop.savePreferences(quality, history, autoNext)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); }); }
+  if (field.id === 'find-markers') { findMarkers = field.checked; storage.setItem('reel.markers', String(findMarkers)); if (!findMarkers) { foundMarkers = {}; updateTransport(); } saveDesktopPreferences(); }
+  if (field.id === 'auto-skip-intro') { autoSkipIntro = field.checked; storage.setItem('reel.autoskip', String(autoSkipIntro)); saveDesktopPreferences(); }
+  if (field.id === 'player-autoplay') { autoNext = field.checked; storage.setItem('reel.autoplay', String(autoNext)); if (!autoNext) cancelAutoNext(true); saveDesktopPreferences(); }
   if (field.id === 'speed') video.playbackRate = Number(field.value);
   if (field.id === 'player-seek') { scrubbing = false; player.seek(Number(field.value)); updateTransport(); }
   if (field.id === 'chapters') player.seek(Number(field.value));
@@ -1551,6 +1612,9 @@ app.addEventListener('change', event => {
   if (field.id === 'media-source') { selectedMediaSource = field.value; selectedAudio = ''; selectedSubtitle = ''; renderDetail(); }
   if (field.id === 'season') selectSeason(field.value);
 });
+function saveDesktopPreferences(): void {
+  if (desktop) void track(desktop.savePreferences(quality, history, autoNext, findMarkers, autoSkipIntro)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
+}
 // The season menu (and the TV season tabs) load that season's episodes into the detail page.
 function selectSeason(season: string): void {
   if (!detail || seasonLoading) return;

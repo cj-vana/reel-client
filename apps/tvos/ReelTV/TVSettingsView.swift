@@ -4,6 +4,7 @@ struct TVSettingsView: View {
     @Environment(TVCoordinator.self) private var coordinator
     @State private var addingServer = false
     @State private var removing: Account?
+    @AppStorage("findMarkers") private var findMarkers = true
     private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "" }
 
     var body: some View {
@@ -23,6 +24,9 @@ struct TVSettingsView: View {
                     Toggle("Private viewing", isOn: Binding(get: { coordinator.session.privateViewing }, set: { coordinator.setPrivateViewing($0) }))
                         .accessibilityIdentifier("privateViewing")
                     Text(coordinator.session.privateViewing ? "Watch progress stays on this device." : "Watch progress syncs with your server.")
+                        .font(.system(size: 24)).foregroundStyle(Color.tvMuted)
+                    Toggle("Find intros and credits", isOn: $findMarkers).accessibilityIdentifier("findMarkers")
+                    Text("When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes. Your server streams a low-quality copy of that audio to do it.")
                         .font(.system(size: 24)).foregroundStyle(Color.tvMuted)
                     if coordinator.session.api?.isSimulatorPreview == true {
                         Label("This test build won’t change watch history or library state on this server.", systemImage: "lock")
