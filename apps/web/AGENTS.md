@@ -37,5 +37,6 @@ From `apps/web`, after `npm ci --ignore-scripts`:
 - Watch history is on by default; `reel.history` stores `'false'` only when Private viewing is on. Tests that start playback must expect start and stop reports.
 - Browser routes in tests: match segment and stream requests by path (`url => url.pathname.endsWith(...)`), not with a `?*` glob; requests do not always carry a query string.
 - The TV layout keeps focus inside the player while it is open. New player buttons need `data-player-contextual` so they stay reachable when the overlay hides, and TV focus rules in `updateTransport()`.
+- After Resume, the player ignores Play and Pause until the saved position is confirmed, but `currentTime` already reads past the start. A test that pauses right after starting must press again until the video is paused, as `pause()` in `tests/browser/player-experience.spec.ts` does.
 - Text a person reads stays plain: no test or developer language, no em dashes.
 - `src/audio-fingerprint.ts` thresholds were tuned on synthetic audio (`tests/synthetic-audio.ts`); a change needs those tests and the browser journey in `tests/browser/intro-scan.spec.ts`.
