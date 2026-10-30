@@ -94,6 +94,22 @@ const server = createServer(async (request, response) => {
       if (!file) { send({ error: 'Unexpected scan start' }, 400); return; }
       send(await readFile(resolve(media, 'intro', file)), 200, 'audio/mpeg'); return;
     }
+    // A desktop download: the converted stream as Jellyfin serves it, a master playlist naming one variant, then
+    // the media playlist and its segments, all signed in with the Authorization header and the download's session.
+    const download = /^\/Videos\/([^/]+)\/(master\.m3u8|main\.m3u8|hls1\/main\/(\d+)\.ts)$/.exec(path);
+    if (request.method === 'GET' && download && user && !query.apikey) {
+      if (!/^reel-download-[0-9a-f]{32}$/.test(query.playsessionid ?? '') && !download[3]) { send({ error: 'Unexpected download request' }, 400); return; }
+      const [, id, file, segment] = download;
+      if (file === 'master.m3u8') {
+        if (query.videocodec !== 'h264' || query.segmentcontainer !== 'ts' || !query.mediasourceid || !query.videobitrate) { send({ error: 'Unexpected conversion' }, 400); return; }
+        send(Buffer.from(`#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=${Number(query.videobitrate) + 128000}\nmain.m3u8?PlaySessionId=${query.playsessionid}\n`), 200, 'application/vnd.apple.mpegurl'); return;
+      }
+      const playlist = await readFile(resolve(media, 'hls/index.m3u8'), 'utf8');
+      if (file === 'main.m3u8') { send(Buffer.from(playlist.replace(/^segment(\d+)\.ts$/gm, (_match, n) => `hls1/main/${Number(n)}.ts?PlaySessionId=${query.playsessionid}`)), 200, 'application/vnd.apple.mpegurl'); return; }
+      try { send(await readFile(resolve(media, 'hls', `segment${String(Number(segment)).padStart(3, '0')}.ts`)), 200, 'video/mp2t'); } catch { send({}, 404); }
+      state.calls.push({ path: '/qa/download-segment', method: 'GET', user, query: { id } });
+      return;
+    }
     if ((request.method === 'GET' || request.method === 'HEAD') && (path.startsWith('/Videos/') || path.startsWith('/Audio/'))) {
       if (!query.apikey?.startsWith('fixture-')) { send({}, 401); return; }
       if (query.apikey === 'fixture-fallback' && path.endsWith('/stream')) { send({}, 415); return; }

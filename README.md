@@ -42,7 +42,7 @@ These use the demo library, with made-up titles and generated artwork. The [web 
 - Skip Intro, and Next episode when the credits start, even if your server has no intro markers. Every app except Roku finds them by comparing the theme music that neighboring episodes share.
 - Keep several servers and accounts, each with its own browsing preferences.
 - Install the web app on a phone or computer, or host it yourself with Docker.
-- Download videos for offline viewing on iPhone and iPad.
+- Download videos for offline viewing on iPhone, iPad and the desktop app, as a copy your server converts at 1080p, 720p or 480p.
 
 What you can do varies by client and by server. The [feature guide](docs/features.md) has the details.
 

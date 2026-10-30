@@ -28,6 +28,8 @@ A sandboxed preload exposes five fixed operations: initialize, save connections,
 
 Packaged apps run `app.asar` only, with `RunAsNode`, `NODE_OPTIONS` and Node inspector flags disabled. There is no analytics, crash uploader or autostart.
 
+Downloads run in the main process with their own in-memory session, read only from the server the request names (every playlist entry is checked against it), and write only under `offline/` in the app data folder. The page reads a finished download through `reel://app/offline/<id>/<file>`, where the file name must be the playlist, a numbered segment or the artwork.
+
 The update check runs in the main process and talks only to GitHub: the releases API, and on a signed Mac the release's feed and ZIP. The page cannot pass it a URL. Squirrel.Mac installs an update only when the new app is signed by the same Developer ID team, and discards a ZIP whose SHA-256 or size differs from the feed.
 
 Windows and Linux packages are unsigned, and so is the Mac app when a release is built without the signing secrets; macOS and Windows may warn on first launch. See [desktop installation](../../../docs/install/desktop.md).

@@ -51,6 +51,29 @@ contextBridge.exposeInMainWorld('ReelBrowsePreferences',Object.freeze({
  }
 }));
 
+// Downloads: list, start and remove an account's downloads, and save where playback stopped. The main process
+// validates every field again.
+const offlineChannel='reel:offline:v1',offlineChangedChannel='reel:offline:changed:v1';
+const offlineInvoke=message=>ipcRenderer.invoke(offlineChannel,message);
+const offlineId=value=>typeof value==='string'&&/^[0-9a-f-]{36}$/.test(value);
+const offlineAccount=value=>typeof value==='string'&&value.length>0&&value.length<=2600;
+const offlineInvalid=()=>Promise.resolve({ok:false,code:'invalid'});
+let disposeOffline;
+contextBridge.exposeInMainWorld('ReelOffline',Object.freeze({
+ list:accountId=>offlineAccount(accountId)?offlineInvoke({operation:'list',accountId}):offlineInvalid(),
+ start:request=>request!==null&&typeof request==='object'&&!Array.isArray(request)?offlineInvoke({operation:'start',request:{...request}}):offlineInvalid(),
+ remove:(accountId,id)=>offlineAccount(accountId)&&offlineId(id)?offlineInvoke({operation:'remove',accountId,id}):offlineInvalid(),
+ forget:accountId=>offlineAccount(accountId)?offlineInvoke({operation:'forget',accountId}):offlineInvalid(),
+ position:(accountId,id,seconds)=>offlineAccount(accountId)&&offlineId(id)&&Number.isFinite(seconds)?offlineInvoke({operation:'position',accountId,id,seconds}):offlineInvalid(),
+ onChange:callback=>{
+  disposeOffline?.();if(typeof callback!=='function')return()=>{};
+  const listener=()=>{try{callback();}catch{/* A view callback cannot break the subscription. */}};
+  ipcRenderer.on(offlineChangedChannel,listener);
+  const dispose=()=>{ipcRenderer.removeListener(offlineChangedChannel,listener);if(disposeOffline===dispose)disposeOffline=undefined;};disposeOffline=dispose;
+  return dispose;
+ }
+}));
+
 // Updates: read the state, check now, restart into a downloaded update, or open the release page. Nothing the
 // page passes reaches the main process except the operation's name.
 const updatesChannel='reel:updates:v1',updatesStateChannel='reel:updates:state:v1';

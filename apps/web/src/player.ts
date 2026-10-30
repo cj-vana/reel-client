@@ -94,6 +94,41 @@ export class ReelPlayer {
     window.addEventListener('online', () => { void this.reports.flush(); });
   }
 
+  // A download playing from this device: no server session, report or transcode cleanup is involved.
+  private local?: { item: MediaItem; generation: number };
+  /** Where a download stopped, so it resumes there next time. */
+  onLocalPosition?: (item: MediaItem, seconds: number) => void;
+
+  async openLocal(item: MediaItem, url: string, start: number): Promise<void> {
+    this.close();
+    this.last = undefined;
+    const generation = ++this.generation, local = { item, generation };
+    this.local = local; this.latestPosition = start; this.seeking = false;
+    this.onFormat?.(null); this.onMethod?.('Offline'); this.onState?.('preparing');
+    const active = () => this.local === local && this.generation === generation;
+    let started = false, saved = 0;
+    const save = () => { if (active() && Number.isFinite(this.video.currentTime)) { this.latestPosition = this.video.currentTime; this.onLocalPosition?.(item, this.latestPosition); } };
+    const fail = () => { if (active()) { this.releaseCurrent(); this.onState?.('error', 'This download could not be played. Remove it and download it again.'); } };
+    const listeners: Array<[string, EventListener]> = [
+      ['loadedmetadata', () => { if (active() && start > 0.5 && Number.isFinite(this.video.duration)) this.video.currentTime = Math.min(start, Math.max(0, this.video.duration - 1)); }],
+      ['canplay', () => { if (!active() || started) return; started = true; void this.video.play().catch(() => { if (active()) this.onState?.('paused', 'Press Play to start watching.'); }); }],
+      ['playing', () => { if (active()) this.onState?.('playing'); }],
+      ['pause', () => { if (active() && started && !this.video.ended) { save(); this.onState?.('paused'); } }],
+      ['timeupdate', () => { if (active() && started && Date.now() - saved > 5000) { saved = Date.now(); save(); } }],
+      ['seeked', save],
+      ['ended', () => { if (active()) { this.latestPosition = 0; this.onLocalPosition?.(item, 0); this.onState?.('ended'); } }],
+      ['error', fail],
+      ['waiting', () => { if (active()) this.onState?.(started ? 'buffering' : 'preparing', 'Loading from this computer.'); }]
+    ];
+    listeners.forEach(([event, listener]) => this.video.addEventListener(event, listener));
+    this.removeEvents = () => listeners.forEach(([event, listener]) => this.video.removeEventListener(event, listener));
+    const { default: HlsConstructor } = await import('hls.js');
+    if (!active()) return;
+    this.hls = new HlsConstructor({ maxBufferLength: 30, backBufferLength: 30, enableWorker: true });
+    this.hls.on(HlsConstructor.Events.ERROR, (_event, data) => { if (data.fatal) fail(); });
+    this.hls.loadSource(url); this.hls.attachMedia(this.video);
+  }
+
   async open(api: JellyfinAPI, item: MediaItem, options: PlaybackOptions): Promise<void> {
     this.close();
     this.last = { api, item };
@@ -309,6 +344,11 @@ export class ReelPlayer {
 
   retry(): void { if (this.last) void this.prepare(this.last.api, this.last.item, this.latestPosition); }
   seek(seconds: number): void {
+    if (this.local && Number.isFinite(seconds)) {
+      const total = this.video.duration;
+      this.video.currentTime = this.latestPosition = Math.max(0, Math.min(Number.isFinite(total) ? total : Infinity, seconds));
+      return;
+    }
     const current = this.current;
     if (!current || current.scopedResumePending || !Number.isFinite(seconds)) return;
     const total = this.video.duration;
@@ -319,6 +359,7 @@ export class ReelPlayer {
   }
   skip(seconds: number): void { this.seek((Number.isFinite(this.video.currentTime) ? this.video.currentTime : this.latestPosition) + seconds); }
   toggle(): void {
+    if (this.local) { if (this.video.paused) void this.video.play().catch(() => undefined); else this.video.pause(); return; }
     const current = this.current;
     if (!current || current.scopedResumePending) return;
     current.pausedIntent = !this.video.paused;
@@ -400,6 +441,9 @@ export class ReelPlayer {
   }
   private releaseCurrent(): void {
     this.removeEvents?.(); this.removeEvents = undefined;
+    const local = this.local;
+    this.local = undefined;
+    if (local && !this.video.ended && Number.isFinite(this.video.currentTime) && this.video.currentTime > 0) this.onLocalPosition?.(local.item, this.video.currentTime);
     const current = this.current;
     if (current) {
       this.capturePosition(current);
