@@ -1,0 +1,46 @@
+# Runs the published Reel image instead of building from source.
+#
+#   docker compose -p reel -f docker/compose.release.yml up -d
+#
+# Add `--profile auto-update` to also run the updater, which checks for a new Reel image every six hours and
+# replaces the container when one is published. It updates only containers in the "reel" scope, so other
+# containers on the host are left alone.
+name: reel-client
+services:
+  web:
+    image: ${REEL_IMAGE:-ghcr.io/cj-vana/reel-client:latest}
+    user: "101:101"
+    ports:
+      - "127.0.0.1:18790:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,uid=101,gid=101,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.scope: reel
+
+  updater:
+    profiles: [auto-update]
+    # Watchtower, maintained fork (github.com/nicholas-fedor/watchtower), pinned to a reviewed release.
+    image: nickfedor/watchtower:1.23.2@sha256:62fb91130ddb493f869cad7e198fa260dd16c5da293ed092cbd5d8781566f7a6
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_SCOPE: reel
+      WATCHTOWER_POLL_INTERVAL: "21600"
+      WATCHTOWER_CLEANUP: "true"
+    # The updater replaces containers through the Docker API, so it needs the Docker socket. Anything with this
+    # socket controls Docker on the host; leave the profile off if that is not acceptable.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.centurylinklabs.watchtower.scope: reel
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    restart: unless-stopped

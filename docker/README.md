@@ -22,6 +22,33 @@ After the first online load, the app interface can open offline. Browsing your s
 
 New versions show **Update Reel**. Finish playback and any pending changes, then close other Reel windows before updating. **Later** keeps the current version. Remembered connections stay available after an update; session-only connections require sign-in again.
 
+## Run the published image
+
+Each release publishes a multi-architecture image to the GitHub Container Registry. To run it without building, use the release compose file from the repository root:
+
+```sh
+docker compose -p reel -f docker/compose.release.yml up -d
+```
+
+It runs the same hardened container as the source build, on the same address. Set `REEL_IMAGE` to pin a version, for example `REEL_IMAGE=ghcr.io/cj-vana/reel-client:1.2.0`.
+
+## Automatic updates
+
+Add the `auto-update` profile to also run [Watchtower](https://github.com/nicholas-fedor/watchtower), the maintained fork:
+
+```sh
+docker compose -p reel -f docker/compose.release.yml --profile auto-update up -d
+```
+
+Every six hours it checks for a newer `latest` image, replaces the Reel container with the same settings, and removes the old image. It only touches containers labelled with the `reel` scope, so the rest of your host is left alone. Browser sessions are not affected; open tabs offer **Update Reel** once the new version is running.
+
+The updater needs the Docker socket to replace containers, which gives it control of Docker on the host. If that is not acceptable, leave the profile off and update by hand:
+
+```sh
+docker compose -p reel -f docker/compose.release.yml pull
+docker compose -p reel -f docker/compose.release.yml up -d
+```
+
 ## Update and stop
 
 After updating your checked-out source:

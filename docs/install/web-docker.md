@@ -14,6 +14,14 @@ docker compose -p reel -f docker/compose.yml up --build -d
 
 Open **http://127.0.0.1:18790** on the Docker host. Enter your Jellyfin server address, username, and password in Reel. See the [Docker guide](../../docker/README.md) for updates, logs, and removal.
 
+To run the published image instead of building it, and to have it update itself, use the release compose file:
+
+```sh
+docker compose -p reel -f docker/compose.release.yml --profile auto-update up -d
+```
+
+The [Docker guide](../../docker/README.md#automatic-updates) explains what the updater can access and how to update by hand instead.
+
 The default address is available only on the Docker host. To use Reel from a phone, tablet, TV, or another computer, publish the static site through your HTTPS reverse proxy. Allow the Reel site's origin in Jellyfin's CORS configuration. An HTTPS site requires an HTTPS Jellyfin address.
 
 ## Static hosting
