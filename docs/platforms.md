@@ -8,8 +8,8 @@ Reel shares its look across the Apple apps, the web player and the TV clients. E
 | --- | --- | --- |
 | iPhone, iPhone Duo and iPad | iOS or iPadOS 27 or later | Native playback, downloads and touch controls. Layouts adapt to each screen, including both screens of iPhone Duo. AirPlay and Picture in Picture depend on the device and the media. |
 | Apple TV | tvOS 27 or later | Remote navigation, native playback, season browsing and episode controls. Fewer features than the iPhone and iPad app. |
-| Web and Docker | A current browser and a reachable Jellyfin server | Installable as an app on browsers that support it. The interface opens offline, but your library and media do not. Video downloads are an iPhone and iPad feature. |
-| Desktop | macOS 13, Windows 10 or a current Linux distribution | Electron packages for macOS, Windows and Linux. See the [desktop guide](install/desktop.md). |
+| Web and Docker | A current browser and a reachable Jellyfin server | Installable as an app on browsers that support it. The interface opens offline, but your library and media do not. Video downloads are in the iPhone, iPad and desktop apps. |
+| Desktop | macOS 13, Windows 10 or a current Linux distribution | Electron packages for macOS, Windows and Linux, with downloads for watching offline. See the [desktop guide](install/desktop.md). |
 | LG webOS | An LG TV with Developer Mode | Uses the TV's own video decoder. |
 | Samsung Tizen | A Tizen 7.0 or newer TV, Tizen Studio and your own certificate | Experimental. |
 | Roku | A Roku with developer mode, OS 16 or newer | Experimental. Movies and series only. |

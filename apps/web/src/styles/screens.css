@@ -1121,6 +1121,29 @@ html[data-layout="tv"] .connection-brand { display: inline-flex; }
 .settings-panel p { color: var(--text-2); font-size: .875rem; line-height: 1.6; }
 .settings-panel p svg { width: 18px; height: 18px; margin: -2px 8px 0 0; color: var(--accent); }
 .settings-panel .button { justify-self: start; }
+/* Desktop downloads: the size choices on Details, and the Downloads list. */
+.download-control { display: contents; }
+.download-control .detail-menu-panel > .field-note { padding: 6px 12px 4px; color: var(--text-3); font-size: .8125rem; }
+.detail-intro .actions .detail-menu-panel .button.download-size { display: grid; justify-items: start; gap: 2px; padding: 8px 12px; text-align: left; }
+.download-size small { color: var(--text-3); font-size: .8125rem; }
+.download-list { display: grid; gap: 12px; max-width: 920px; padding: 0 var(--gutter) 56px; }
+.download-row { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 12px; border-radius: var(--radius-panel); background: var(--raised); }
+.download-art { display: grid; place-items: center; width: 160px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-art); background: var(--raised-2); color: var(--text-3); }
+.download-art svg { width: 28px; height: 28px; }
+.download-text { display: grid; gap: 4px; min-width: 0; }
+.download-text strong, .download-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-text span { color: var(--text-2); }
+.download-text small { color: var(--text-3); }
+.download-text .download-error { color: var(--warning); }
+.download-text progress { width: 100%; max-width: 320px; accent-color: var(--accent); }
+.download-actions { display: flex; gap: 8px; }
+.downloads-empty { max-width: 560px; padding: 8px var(--gutter) 56px; }
+.downloads-empty p { color: var(--text-2); line-height: 1.6; }
+@media (max-width: 640px) {
+  .download-row { grid-template-columns: 96px minmax(0, 1fr); }
+  .download-art { width: 96px; }
+  .download-actions { grid-column: 1 / -1; }
+}
 /* Desktop: the update status and its one action share a row. */
 .desktop-updates { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 /* The caption under a switch belongs to it, so it sits just below the switch rather than a full row away. */

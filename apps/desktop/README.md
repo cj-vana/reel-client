@@ -48,6 +48,10 @@ Use Space to play or pause and the arrow keys to seek. Playback options contain 
 
 Use Settings to choose default quality, watch-progress synchronization, and automatic episode playback. Sign out before sharing your computer account with someone else.
 
+## Downloads
+
+On a film or an episode, **Download** offers three sizes: High (1080p, 6 Mbps), Standard (720p, about 1.9 Mbps) and Data saver (480p, 0.9 Mbps), the same as the iPhone and iPad app. Your server converts the title to H.264 and AAC; the main process (`src/offline.mjs`) saves the HLS segments under the app data folder, through its own in-memory session so nothing reaches the HTTP cache, and the page plays them from `reel://app/offline/` with hls.js. **Downloads** in the sidebar lists them with their progress, and a download resumes where you stopped. Signing out of an account removes its downloads. A download cut off by quitting is offered again rather than resumed.
+
 ## Distribution
 
 The scripts create portable application folders. Installers and store packages are not included. Current platform availability is listed in the [installation guide](../../docs/install/README.md).
