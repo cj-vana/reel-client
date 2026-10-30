@@ -80,19 +80,21 @@ private final class FakeServer: @unchecked Sendable {
     private var calls: [(id: String, start: Double)] = []
     var requests: [(id: String, start: Double)] { lock.withLock { calls } }
     let status: Int?
-    init(status: Int? = nil) { self.status = status }
+    /// Sends the rest of the episode whatever window was asked for, as a server ignoring the bitrate could.
+    let everything: Bool
+    init(status: Int? = nil, everything: Bool = false) { self.status = status; self.everything = everything }
 
     func detector(defaults: UserDefaults) -> MarkerDetector {
         MarkerDetector(store: MarkerStore(defaults: defaults), fetch: { [self] _, item, start, _ in
             lock.withLock { calls.append((item.id, start)) }
             if let status { throw status == 403 ? ReelError.unauthorized : ReelError.server(status) }
             return Data("\(item.id)|\(start)".utf8)
-        }, decode: { data in
+        }, decode: { [everything] data in
             let parts = String(decoding: data, as: UTF8.self).split(separator: "|")
-            let n = Int(parts[0].split(separator: "-")[1])!, start = Double(parts[1])!, seconds = start > 0 ? 600 - start : 180
+            let n = Int(parts[0].split(separator: "-")[1])!, start = Double(parts[1])!, seconds = start > 0 || everything ? 600 - start : 180
             var audio = programme(seconds, seed: UInt32(n * 1000) + UInt32(start))
             audio = mix(audio, theme, at: Double(10 + 7 * n) - start)
-            if start > 0 { audio = mix(audio, creditsTheme, at: Double(530 + n) - start) }
+            if start > 0 || everything { audio = mix(audio, creditsTheme, at: Double(530 + n) - start) }
             return audio
         })
     }
@@ -131,6 +133,14 @@ final class MarkerDetectorTests: XCTestCase {
         // What is known is not scanned again.
         _ = try await detector.detect(api: api, item: episode(3), neighbors: [episode(4)], intro: true, credits: true)
         XCTAssertTrue(server.requests.count == 4)
+    }
+
+    func testAScanReadsOnlyItsOwnWindowWhenTheServerSendsMore() async throws {
+        // Past the opening window the credits music would be found and taken for the intro.
+        let server = FakeServer(everything: true), detector = server.detector(defaults: freshDefaults())
+        let found = try await detector.detect(api: api, item: episode(2), neighbors: [episode(1)], intro: true, credits: true)
+        XCTAssertTrue(near(found.intro?.lowerBound, 24) && near(found.intro?.upperBound, 64), "intro \(String(describing: found.intro))")
+        XCTAssertTrue(near(found.credits, 532))
     }
 
     func testARefusingServerIsNotAskedAgain() async throws {

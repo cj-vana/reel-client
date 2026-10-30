@@ -197,10 +197,13 @@ actor MarkerDetector {
         // A dropped connection is tried again next time.
         catch { return nil }
         let decode = self.decode
+        // A server that sends a lower bitrate than asked fits more audio into the same bytes. Past the opening
+        // window it would reach the credits music, which would then be taken for the intro.
+        let most = Int((window.seconds * AudioFingerprint.sampleRate).rounded(.up))
         let made = try await Task.detached(priority: .utility) { () throws -> AudioFingerprint.Print? in
             guard let samples = try? decode(data) else { return nil }
             try Task.checkCancellation()
-            return AudioFingerprint.make(samples)
+            return AudioFingerprint.make(samples.count > most ? Array(samples.prefix(most)) : samples)
         }.value
         try Task.checkCancellation()
         remember(key, made)

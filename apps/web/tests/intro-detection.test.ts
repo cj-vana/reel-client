@@ -110,6 +110,31 @@ test('movies, episodes without neighbors and cancelled scans', async () => {
   await assert.rejects(detector.detect(api, 'account', episode(2), [episode(1)], { intro: true, credits: true }, controller.signal), { name: 'AbortError' });
 });
 
+test('a scan reads only its own window, however much the server sends at once', async () => {
+  // A busy page can receive the rest of the file in one read, and a server can send a lower bitrate than asked.
+  // Either way the opening scan must stop before the credits music, or the credits would be taken for the intro.
+  const decoded: number[] = [];
+  const api = {
+    server: 'https://media.example.test',
+    async request<T>(path: string, request?: { query?: Record<string, unknown> }): Promise<T> {
+      const body = new Uint8Array(3_000_000).fill(32);
+      body.set(new TextEncoder().encode(JSON.stringify({ id: path.split('/')[1], start: Number(request?.query?.startTimeTicks ?? 0) / TICKS })));
+      return new Response(new ReadableStream({ start(controller) { controller.enqueue(body); controller.close(); } })) as T;
+    }
+  };
+  // Whatever the bytes, the decoder hands back the rest of the episode, theme and credits included.
+  const decode: Decoder = async bytes => {
+    decoded.push(bytes.length);
+    const { id, start } = JSON.parse(new TextDecoder().decode(bytes.subarray(0, 64))) as { id: string; start: number };
+    const n = Number(id.split('-')[1]);
+    return mix(mix(programme(600 - start, n * 1000 + start), theme, introAt(n) - start), creditsTheme, creditsAt(n) - start);
+  };
+  const markers = await new MarkerDetector(decode, new MarkerStore(), now).detect(api, 'account', episode(2), [episode(1)], { intro: true, credits: true }, signal());
+  near(markers.intro?.start, introAt(2), 'intro start'); near(markers.intro?.end, introAt(2) + 40, 'intro end'); near(markers.credits, creditsAt(2), 'credits');
+  const window = (seconds: number) => Math.ceil(seconds * 32_000 / 8) + 16_384;
+  assert.deepEqual(decoded, [window(180), window(180), window(120), window(120)]);
+});
+
 test('the marker store keeps found markers for months, misses for two weeks, and forgets an account', () => {
   const saved = new Map<string, string>();
   const storage = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => { saved.set(key, value); } };
