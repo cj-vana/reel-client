@@ -28,6 +28,10 @@ Every client sends these reports by default. Turn on Private viewing in Settings
 
 Playback of saved offline copies keeps its progress locally. Removing a connection removes its saved credentials from the app and attempts to revoke the Jellyfin session. Local cleanup errors are shown; deleting a local connection does not delete the server account, library or server-side history. Removing the app does not delete anything already stored by your server.
 
+## Finding intros and credits
+
+When your server has not marked an episode's intro or credits, every app except Roku asks your server for a low-quality audio copy of the opening and closing minutes of that episode and of a neighboring one, and compare them on the device. Only your server receives these requests. They use their own playback session and are never reported as watched. The app keeps the times it finds, not the audio, and removes them when you sign out of that account. Turn off Find intros and credits in Settings to stop it.
+
 ## Optional integrations
 
 - Seerr requests, DVR actions, remote-player commands and SyncPlay group actions communicate with the configured services and can affect their state in normal device Release use.

@@ -55,7 +55,7 @@ test('autoplay saves carry explicit choices and the legacy default in revision o
   const desktop=new DesktopSession(api,initial());
   const off=desktop.savePreferences(8000000,true,false),on=desktop.savePreferences(2000000,false);
   await settle();assert.equal(writes.length,1);desktop.close();release();await Promise.all([off,on,desktop.drain()]);
-  assert.deepEqual(writes,[{quality:8000000,history:true,autoplay:false,expectedRevision:0},{quality:2000000,history:false,autoplay:true,expectedRevision:1}]);
+  assert.deepEqual(writes,[{quality:8000000,history:true,autoplay:false,markers:true,autoSkip:false,expectedRevision:0},{quality:2000000,history:false,autoplay:true,markers:true,autoSkip:false,expectedRevision:1}]);
   await assert.rejects(desktop.savePreferences(120000000,false,false));assert.equal(writes.length,2);
 });
 test('uncertain account commit quarantines writes and preserves provisional token ownership for authoritative reopen',async()=>{

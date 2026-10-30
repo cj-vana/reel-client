@@ -1,6 +1,7 @@
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { INTRO_EPISODES, INTRO_RUNTIME, INTRO_TAIL_START, introEpisodeWAV } from './intro-fixture.mjs';
 
 const root = resolve('.cache/fixture');
 // --demo also renders a short clip for every title in fixtures/demo, so the demo library plays its own picture.
@@ -10,6 +11,18 @@ const commands = [
   ['-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000', '-t', '14', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', resolve(root, 'sample.mp4')],
   ['-i', resolve(root, 'sample.mp4'), '-c:v', 'libx264', '-g', '96', '-c:a', 'copy', '-hls_time', '4', '-hls_playlist_type', 'vod', '-hls_segment_filename', resolve(root, 'hls/segment%03d.ts'), resolve(root, 'hls/index.m3u8')]
 ];
+// The intro scan episodes: a small picture over each episode's synthetic audio, and that audio as the 32 kbps
+// MP3 Jellyfin sends the scan, whole and from the start of the closing minutes.
+await mkdir(resolve(root, 'intro'), { recursive: true });
+for (const id of INTRO_EPISODES) {
+  const wav = resolve(root, 'intro', id + '.wav'), mp3 = ['-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k'];
+  await writeFile(wav, introEpisodeWAV(id));
+  commands.push(
+    ['-i', wav, ...mp3, resolve(root, 'intro', id + '.mp3')],
+    ['-ss', String(INTRO_TAIL_START), '-i', wav, ...mp3, resolve(root, 'intro', id + '-tail.mp3')],
+    ['-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=5', '-i', wav, '-t', String(INTRO_RUNTIME), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '34', '-g', '50', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', resolve(root, 'intro', id + '.mp4')]
+  );
+}
 if (demo) {
   const artwork = resolve('fixtures/demo');
   await mkdir(resolve(root, 'demo'), { recursive: true });
@@ -29,4 +42,5 @@ for (const command of commands) {
   const result = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...command], { stdio: 'inherit' });
   if (result.status !== 0) throw new Error('ffmpeg fixture preparation failed');
 }
-console.log(demo ? `Generated test bars and audio, plus ${commands.length - 2} demo clips from the demo artwork.` : 'Generated original test bars and audio. No household media was used.');
+const demoClips = commands.length - 2 - 3 * INTRO_EPISODES.length;
+console.log(demo ? `Generated test bars, audio and intro scan episodes, plus ${demoClips} demo clips from the demo artwork.` : 'Generated original test bars, audio and intro scan episodes. No household media was used.');

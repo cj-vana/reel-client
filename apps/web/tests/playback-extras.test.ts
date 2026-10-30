@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiError, type JellyfinAPI } from '../src/api.ts';
-import { loadEpisodeContext, loadIntroSegment, loadSeasonEpisodes } from '../src/playback-extras.ts';
+import { loadEpisodeContext, loadServerMarkers, loadSeasonEpisodes } from '../src/playback-extras.ts';
 import { type MediaItem, TICKS } from '../src/types.ts';
 
 const episode = (season: number, number: number): MediaItem => ({ Id: `e-${season}-${number}`, Name: `Episode ${number}`, Type: 'Episode', SeriesId: 'show', SeasonId: `s-${season}`, ParentIndexNumber: season, IndexNumber: number, RunTimeTicks: 120 * TICKS });
@@ -60,37 +60,40 @@ test('aborted metadata loads cannot return stale episode or intro context', asyn
   const api: Pick<JellyfinAPI, 'page'> = { async page() { controller.abort(); return { Items: seasons }; } };
   await assert.rejects(loadEpisodeContext(api, episode(1, 1), controller.signal), { name: 'AbortError' });
   let requested = false;
-  await assert.rejects(loadIntroSegment({ request: async <T>() => { requested = true; return {} as T; } }, episode(1, 1), controller.signal), { name: 'AbortError' });
+  await assert.rejects(loadServerMarkers({ request: async <T>() => { requested = true; return {} as T; } }, episode(1, 1), controller.signal), { name: 'AbortError' });
   assert.equal(requested, false);
 });
 
 function segmentAPI(Items: unknown[]): Pick<JellyfinAPI, 'request'> {
   return { async request<T>(path, options) {
-    assert.equal(path, 'MediaSegments/e-1-1'); assert.equal(options?.query?.includeSegmentTypes, 'Intro');
+    assert.equal(path, 'MediaSegments/e-1-1'); assert.equal(options?.query, undefined);
     return { Items } as T;
   } };
 }
-test('Skip Intro uses typed server metadata and never infers boundaries from chapter names', async () => {
-  const item = { ...episode(1, 1), Chapters: [{ Name: 'Intro', StartPositionTicks: 0 }, { Name: 'Episode', StartPositionTicks: 30 * TICKS }] };
-  assert.equal(await loadIntroSegment(segmentAPI([]), item, signal()), undefined);
-  assert.deepEqual(await loadIntroSegment(segmentAPI([
+test('server markers use typed segments and never infer boundaries from chapter names', async () => {
+  const item = { ...episode(1, 1), Chapters: [{ Name: 'Intro', StartPositionTicks: 0 }, { Name: 'Credits', StartPositionTicks: 100 * TICKS }] };
+  assert.deepEqual(await loadServerMarkers(segmentAPI([]), item, signal()), {});
+  assert.deepEqual(await loadServerMarkers(segmentAPI([
     { Type: 'Outro', StartTicks: 90 * TICKS, EndTicks: 120 * TICKS },
+    { Type: 'Recap', StartTicks: 0, EndTicks: 4 * TICKS },
     { ItemId: item.Id, Type: 'Intro', StartTicks: 5 * TICKS, EndTicks: 27 * TICKS }
-  ]), item, signal()), { start: 5, end: 27 });
+  ]), item, signal()), { intro: { start: 5, end: 27 }, credits: 90 });
 });
 
-test('wrong-item, nonfinite, reversed, negative and beyond-runtime segment data are not skippable', async () => {
-  const base = { ItemId: 'e-1-1', Type: 'Intro', StartTicks: 5 * TICKS, EndTicks: 27 * TICKS };
-  for (const patch of [{ ItemId: 'other' }, { Type: 'Unknown' }, { StartTicks: -1 }, { StartTicks: NaN }, { EndTicks: Infinity }, { EndTicks: 5 * TICKS }, { EndTicks: 121 * TICKS }, { EndTicks: '270000000' }]) {
-    assert.equal(await loadIntroSegment(segmentAPI([{ ...base, ...patch }]), episode(1, 1), signal()), undefined);
+test('wrong-item, nonfinite, reversed, negative and beyond-runtime segment data are not used', async () => {
+  for (const type of ['Intro', 'Outro']) {
+    const base = { ItemId: 'e-1-1', Type: type, StartTicks: 5 * TICKS, EndTicks: 27 * TICKS };
+    for (const patch of [{ ItemId: 'other' }, { Type: 'Unknown' }, { StartTicks: -1 }, { StartTicks: NaN }, { EndTicks: Infinity }, { EndTicks: 5 * TICKS }, { EndTicks: 121 * TICKS }, { EndTicks: '270000000' }]) {
+      assert.deepEqual(await loadServerMarkers(segmentAPI([{ ...base, ...patch }]), episode(1, 1), signal()), {});
+    }
   }
 });
 
 test('unsupported segment APIs degrade gracefully while authorization and connectivity errors remain visible', async () => {
   for (const status of [404, 405, 501]) {
-    assert.equal(await loadIntroSegment({ request: async () => { throw new ApiError('not available', status); } }, episode(1, 1), signal()), undefined);
+    assert.deepEqual(await loadServerMarkers({ request: async () => { throw new ApiError('not available', status); } }, episode(1, 1), signal()), {});
   }
   for (const status of [401, 403, 500, 0]) {
-    await assert.rejects(loadIntroSegment({ request: async () => { throw new ApiError('request failed', status); } }, episode(1, 1), signal()), (error: unknown) => error instanceof ApiError && error.status === status);
+    await assert.rejects(loadServerMarkers({ request: async () => { throw new ApiError('request failed', status); } }, episode(1, 1), signal()), (error: unknown) => error instanceof ApiError && error.status === status);
   }
 });

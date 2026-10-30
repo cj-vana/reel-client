@@ -227,6 +227,9 @@ struct PlayerView: View {
     @State private var showingGroup = false
     @State private var showingOptions = false
     @State private var segments: [MediaSegment] = []
+    /// The intro and credits found from the audio, for kinds the server did not mark.
+    @State private var foundSegments: [MediaSegment] = []
+    @AppStorage("findMarkers") private var findMarkers = true
     @State private var nextEpisode: MediaItem?
     @State private var chromeVisible = true
     @State private var chromeTask: Task<Void, Never>?
@@ -285,7 +288,7 @@ struct PlayerView: View {
         .background(.black)
         .foregroundStyle(.white)
         .modifier(RevealOnHingeChange(partlyOpen: $hingePartlyOpen, action: revealControls))
-        .task(id: playback.activeItem?.id) { start(); await loadNext(); await loadSegments() }
+        .task(id: playback.activeItem?.id) { start(); await loadNext(); await loadSegments(); await findIntroAndCredits() }
         .onAppear { nowPlaying.begin(playback, back: preferences.rewindSkip(), forward: preferences.forwardSkip()) }
         .onChange(of: playback.preparing) { _, preparing in
             if !preparing { nowPlaying.describe(playback.activeItem ?? item, on: playback.player) }
@@ -652,12 +655,23 @@ struct PlayerView: View {
     /// Skip Intro (or the current segment) while the server marks one; segments set to skip
     /// on their own are skipped here too.
     @ViewBuilder private var segmentSkip: some View {
-        if !segments.isEmpty {
+        let active = segments + foundSegments
+        if !active.isEmpty {
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 let seconds = playback.player.currentTime().seconds
                 let ticks = seconds.isFinite ? Int64(max(0, seconds) * ticksPerSecond) : 0
-                if let segment = segments.first(where: { $0.StartTicks <= ticks && ticks < $0.EndTicks && $0.EndTicks > $0.StartTicks }) {
-                    if preferences.segmentMode(segment.Type) == .ask {
+                if let segment = active.first(where: { $0.StartTicks <= ticks && ticks < $0.EndTicks && $0.EndTicks > $0.StartTicks }) {
+                    if segment.Type == "Outro", preferences.segmentMode("Outro") == .ask, offersEpisodes, let nextEpisode {
+                        // Once the credits roll, the next episode is the likelier choice than the rest of this one.
+                        Button { playEpisode(nextEpisode) } label: {
+                            Label("Next episode", systemImage: "forward.end.fill")
+                                .font(.headline).lineLimit(1).padding(.horizontal, 20).frame(minHeight: 48)
+                                .background(Color.reelText, in: Capsule()).foregroundStyle(Color.reelBackground)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Play \(nextEpisode.Name)")
+                        .accessibilityIdentifier("creditsNextEpisode")
+                    } else if preferences.segmentMode(segment.Type) == .ask {
                         Button { playback.seek(to: segment.EndTicks); revealControls() } label: {
                             Label("Skip \(segment.Type.lowercased())", systemImage: "forward.end.fill")
                                 .font(.headline).lineLimit(1).padding(.horizontal, 20).frame(minHeight: 48)
@@ -908,6 +922,26 @@ struct PlayerView: View {
             guard session.revision == revision, playback.activeItem?.id == item.id else { return }
             segments = EpisodePlayback.segments(page.Items, duration: item.RunTimeTicks)
         } catch { }
+    }
+    /// Fills in the intro and credits the server did not mark by comparing this episode's audio with a neighbor's.
+    private func findIntroAndCredits() async {
+        foundSegments = []
+        guard findMarkers, playback.method != "Offline", let current = playback.activeItem, current.Type == "Episode",
+              let api = session.api else { return }
+        let neighbors = [nextEpisode, previousEpisode].compactMap { $0 }
+        guard !neighbors.isEmpty else { return }
+        let revision = session.revision
+        func apply(_ found: FoundMarkers) {
+            guard !Task.isCancelled, session.revision == revision, playback.activeItem?.id == current.id else { return }
+            foundSegments = found.segments(runtimeTicks: current.RunTimeTicks, server: segments)
+        }
+        apply(MarkerDetector.shared.known(accountID: MarkerDetector.accountID(api), item: current))
+        let intro = !segments.contains { $0.Type == "Intro" }, credits = nextEpisode != nil && !segments.contains { $0.Type == "Outro" }
+        guard intro || credits else { return }
+        // The picture starts first; the scan then downloads a few megabytes of low-quality audio.
+        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+        guard let found = try? await MarkerDetector.shared.detect(api: api, item: current, neighbors: neighbors, intro: intro, credits: credits) else { return }
+        apply(found)
     }
     private func loadNext() async {
         guard !Task.isCancelled else { return }
