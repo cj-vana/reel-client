@@ -247,6 +247,8 @@ jobs:
           persist-credentials: false
       - run: docker compose -p reel -f docker/compose.yml up --build -d --wait
       - run: python3 docker/verify-http.py
+      - name: Check the release compose file, with the updater
+        run: docker compose -p reel -f docker/compose.release.yml --profile auto-update config --quiet
       - if: always()
         run: docker compose -p reel -f docker/compose.yml down
 
