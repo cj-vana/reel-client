@@ -1,6 +1,17 @@
 # Guide for coding agents and contributors
 
-Reel is an open-source Jellyfin client. Each app lives in its own folder under `apps/` and has a README with full instructions.
+Reel is an open-source Jellyfin client. Each app lives in its own folder under `apps/` and has a README with full instructions, and an AGENTS.md with what an agent needs before changing it: where things are, the commands, the rules the code depends on, and known flaky tests.
+
+| Folder | Agent notes |
+|---|---|
+| `apps/web` | [apps/web/AGENTS.md](apps/web/AGENTS.md) |
+| `apps/desktop` | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) |
+| `apps/apple` | [apps/apple/AGENTS.md](apps/apple/AGENTS.md) |
+| `apps/tvos` | [apps/tvos/AGENTS.md](apps/tvos/AGENTS.md) |
+| `apps/roku` | [apps/roku/AGENTS.md](apps/roku/AGENTS.md) |
+| `apps/tizen` | [apps/tizen/AGENTS.md](apps/tizen/AGENTS.md) |
+| `docker` | [docker/AGENTS.md](docker/AGENTS.md) |
+| `scripts` | [scripts/AGENTS.md](scripts/AGENTS.md) |
 
 ## Layout
 
@@ -30,6 +41,16 @@ Node 22.12 or newer. Run `npm ci --ignore-scripts` in an app folder first.
 - Privacy scan: `python3 scripts/check-public-source.py`. It must pass before you push.
 
 CI runs all of this in `.github/workflows/verify.yml`. Version tags run `release.yml`, which builds the packages and opens a draft release.
+
+## Pull requests
+
+`main` changes only through pull requests that pass the `CI result` check, and they merge with a merge commit (squash and rebase are off). CI skips app jobs a change cannot reach; see [scripts/AGENTS.md](scripts/AGENTS.md).
+
+## Features that span apps
+
+- **Intro and credits detection** exists twice: `apps/web/src/audio-fingerprint.ts` and `intro-detection.ts`, and `apps/apple/Reel/Core/AudioFingerprint.swift` and `IntroDetection.swift` (used by iOS and tvOS). Keep the constants and steps the same in both, and the scan's request shape too: its own play session id and no device id, so Jellyfin never stops the video's transcode for it.
+- **Watch history** is sent by default on every client; Private viewing turns it off.
+- **Server writes** (history, favorites, watched, requests) are refused in web preview mode and in Apple debug and simulator builds against servers that are not on loopback. Keep those guards.
 
 ## Conventions
 
