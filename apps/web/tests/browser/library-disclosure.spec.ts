@@ -1,18 +1,23 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const fixture = 'http://127.0.0.1:18771';
-async function connect(page: Page, server = fixture): Promise<void> {
+async function connect(page: Page, server = fixture, tv = false): Promise<void> {
   if (server !== fixture) await page.route(`${server}/**`, async route => {
     const url = new URL(route.request().url());
     await route.fulfill({ response: await route.fetch({ url: fixture + url.pathname + url.search }) });
   });
   await page.route(url => url.origin === server && url.pathname === '/UserViews', route => route.fulfill({ json: { Items: [{ Id: 'visual-library', Name: 'Films', Type: 'CollectionFolder' }], TotalRecordCount: 1 } }));
   await page.route(url => url.origin === server && url.pathname === '/Genres', route => route.fulfill({ json: { Items: [{ Id: 'visual-genre', Name: 'Drama', Type: 'Genre' }], TotalRecordCount: 1 } }));
+  // The TV build starts in TV layout and signs in through its own entry fields.
+  if (tv) await page.route('**/reel-config.js', route => route.fulfill({ contentType: 'text/javascript', body: 'window.REEL_CONFIG={platform:"webos",previewMode:true};' }));
   await page.goto('/');
-  await page.getByLabel('Server address', { exact: true }).fill(server);
-  await page.getByLabel('Username', { exact: true }).fill('library-disclosure');
-  await page.getByLabel('Password', { exact: true }).fill('demo');
-  await page.getByLabel('Remember this connection on this device', { exact: true }).check();
+  for (const [field, label, value] of [['server', 'Server address', server], ['username', 'Username', 'library-disclosure'], ['password', 'Password', 'demo']]) {
+    if (tv) {
+      await page.locator(`[data-tv-field="${field}"]`).click();
+      await page.locator('#tv-entry-input').fill(value); await page.keyboard.press('Enter');
+    } else await page.getByLabel(label, { exact: true }).fill(value);
+  }
+  if (!tv) await page.getByLabel('Remember this connection on this device', { exact: true }).check();
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.hero h1')).toBeVisible();
   await page.locator('#rail').getByRole('button', { name: 'Library', exact: true }).click();
@@ -231,8 +236,7 @@ test('collapsed filters leave option errors and recovery reachable', async ({ pa
 
 test('TV arrow navigation reaches the native filter disclosure and Enter opens it', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await connect(page);
-  await page.evaluate(() => { document.documentElement.dataset.layout = 'tv'; });
+  await connect(page, fixture, true);
   // Pointer controls give way to the remote: view style, the loaded count, multi-select, Back and Refresh.
   for (const button of await page.locator('.browse-heading-actions button,.browse-view button,[data-action="browse-selection"]').all()) await expect(button).toBeHidden();
   expect((await page.locator('#browse-filter-toggle').boundingBox())!.height).toBeGreaterThanOrEqual(58);

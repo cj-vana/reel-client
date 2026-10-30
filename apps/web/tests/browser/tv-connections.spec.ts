@@ -193,8 +193,15 @@ test('TV 720p remote keeps every tab bar control visible and returns along the b
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
   for (const control of await rail.locator('.nav-item:visible,.connection-button:visible').all()) await expect(control).toBeInViewport({ ratio: 1 });
+  // A focused card can scroll the page and tuck the bar away; a pointer brings it back at the top of the
+  // screen. The move repeats until a scroll still settling after the focus change has finished.
+  const pointAtBar = (viewport: { width: number }) => expect.poll(async () => {
+    await page.mouse.move(viewport.width / 2, 40); await page.mouse.move(viewport.width / 2, 2);
+    return page.evaluate(() => document.body.classList.contains('tv-scrolled'));
+  }).toBe(false);
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport);
+    await pointAtBar(viewport);
     await rail.getByRole('button', { name: 'Library', exact: true }).click();
     const first = page.locator('.media-grid .media-card').first();
     await expect(first).toBeVisible(); await first.focus(); await page.keyboard.press('ArrowDown');
@@ -206,6 +213,7 @@ test('TV 720p remote keeps every tab bar control visible and returns along the b
       const outset = parseFloat(style.outlineWidth) + Math.max(0, parseFloat(style.outlineOffset));
       return r.y - outset >= -0.5 && r.bottom + outset <= innerHeight + 0.5;
     })).toBe(true);
+    await pointAtBar(viewport);
     await rail.getByRole('button', { name: 'Home', exact: true }).click();
     const firstShelf = page.locator('.shelf-track .media-card').first();
     await expect(firstShelf).toBeVisible(); await firstShelf.focus(); await page.keyboard.press('ArrowRight');

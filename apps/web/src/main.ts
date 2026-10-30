@@ -858,8 +858,15 @@ content.addEventListener('focusin', event => {
   const id = shelf ? target.closest<HTMLElement>('[data-id]')?.dataset.id : undefined;
   if (id) spotlightTimer = setTimeout(() => spotlightHome(id), 250);
 });
-// The TV tab bar steps aside once a page scrolls and comes back with focus.
-if (layout === 'tv') window.addEventListener('scroll', () => document.body.classList.toggle('tv-scrolled', window.scrollY > 4), { passive: true });
+// The TV tab bar steps aside once a page scrolls. It comes back with focus, or when a pointer such as
+// LG's Magic Remote reaches the top of the screen.
+if (layout === 'tv') {
+  window.addEventListener('scroll', () => document.body.classList.toggle('tv-scrolled', window.scrollY > 4), { passive: true });
+  window.addEventListener('pointermove', event => {
+    const bar = document.querySelector<HTMLElement>('#rail');
+    if (event.pointerType === 'mouse' && bar && event.clientY <= bar.offsetHeight) document.body.classList.remove('tv-scrolled');
+  }, { passive: true });
+}
 
 function selectHomeFeature(id: string): void {
   const featured = homeFeatures.find(item => item.Id === id);
