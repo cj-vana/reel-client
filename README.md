@@ -38,7 +38,8 @@ These use the demo library, with made-up titles and generated artwork. The [web 
 - Pick up where you left off, with Continue Watching, Next Up and recently added episodes.
 - Play full-window video with quality, audio, subtitle and chapter controls.
 - Fit the screen you are on: phones, tablets, both screens of iPhone Duo, desktop windows, and TVs you drive with a remote.
-- Move between episodes with Previous, Next, a season browser and an optional automatic next episode. Skip Intro appears when your server provides the timestamps.
+- Move between episodes with Previous, Next, a season browser and an optional automatic next episode.
+- Skip Intro, and Next episode when the credits start, even if your server has no intro markers. Every app except Roku finds them by comparing the theme music that neighboring episodes share.
 - Keep several servers and accounts, each with its own browsing preferences.
 - Install the web app on a phone or computer, or host it yourself with Docker.
 - Download videos for offline viewing on iPhone and iPad.
