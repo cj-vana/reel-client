@@ -17,6 +17,8 @@ For shows, use Previous and Next, open the season browser, or enable automatic n
 
 TV layouts support directional navigation and visible focus. Phone and tablet layouts use touch targets, native sheets and adaptive navigation. Desktop supports keyboard and pointer input.
 
+On iPhone Duo, open screens lay out as two pages either side of the crease. In the player, a half-open Duo stood like a laptop plays the video above the fold with the controls below it, and one held like a book keeps the controls clear of the fold.
+
 ## Offline and installation
 
 | Capability | Availability |
