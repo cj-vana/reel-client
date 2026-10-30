@@ -23,7 +23,7 @@ On iPhone Duo, open screens lay out as two pages either side of the crease. In t
 
 | Capability | Availability |
 | --- | --- |
-| Offline video downloads | iPhone and iPad (compatible original files or a converted copy) and the desktop app (a converted copy at 1080p, 720p or 480p) |
+| Offline video downloads | iPhone, iPad and the desktop app: a copy your server converts at 1080p, 720p or 480p, or on iPhone and iPad the compatible original file |
 | Installable web app | Supported desktop and mobile browsers |
 | Offline web launch | PWA application shell; server media still requires a connection |
 | Self-hosting | Static web files or Docker |

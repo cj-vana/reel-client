@@ -99,6 +99,8 @@ struct HLSDownloadRecord: Codable, Identifiable, Sendable {
     var error: String?
     var imported = false
     var needsCleanup = false
+    /// Missing on downloads saved before sizes existed, which were all standard.
+    var size: DownloadSize?
     var key: String { accountID + "|" + item.id }
 
     init(id: UUID = UUID(), account: Account, api: JellyfinAPI, item: MediaItem) {
@@ -112,14 +114,30 @@ struct HLSDownloadUserPolicy: Decodable, Sendable {
     let Policy: Policy
 }
 
+/// How large an optimized download is: Jellyfin converts the video to H.264 at this size and bitrate.
+enum DownloadSize: String, Codable, CaseIterable, Identifiable, Sendable {
+    case high, standard, small
+    static let audioBitRate = 128_000
+    var id: String { rawValue }
+    var maxWidth: Int { switch self { case .high: 1920; case .standard: 1280; case .small: 854 } }
+    var maxHeight: Int { switch self { case .high: 1080; case .standard: 720; case .small: 480 } }
+    var videoBitRate: Int { switch self { case .high: 6_000_000; case .standard: 1_872_000; case .small: 900_000 } }
+    var title: String { switch self { case .high: "High · 1080p"; case .standard: "Standard · 720p"; case .small: "Data saver · 480p" } }
+    /// Storage for an hour of video at this size, from its video and audio bitrates.
+    var perHour: String {
+        let bytes = Int64(videoBitRate + Self.audioBitRate) * 3600 / 8
+        return "About " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) + " an hour"
+    }
+}
+
 enum HLSDownloadPlan {
-    static func url(api: JellyfinAPI, item: MediaItem, source: MediaSource, sessionID: String) throws -> URL {
+    static func url(api: JellyfinAPI, item: MediaItem, source: MediaSource, sessionID: String, size: DownloadSize = .standard) throws -> URL {
         guard source.SupportsDirectPlay != true else { throw ReelError.noStream }
         let stream = try api.streamURL(item: item, source: source, sessionID: sessionID)
         guard var parts = URLComponents(url: stream.url, resolvingAgainstBaseURL: false),
               parts.path.lowercased().hasSuffix(".m3u8") else { throw ReelError.noStream }
-        let fixed = ["StartTimeTicks": "0", "VideoCodec": "h264", "AudioCodec": "aac", "MaxWidth": "1280", "MaxHeight": "720",
-                     "VideoBitRate": "1872000", "AudioBitRate": "128000", "MaxAudioChannels": "2", "SegmentContainer": "ts",
+        let fixed = ["StartTimeTicks": "0", "VideoCodec": "h264", "AudioCodec": "aac", "MaxWidth": String(size.maxWidth), "MaxHeight": String(size.maxHeight),
+                     "VideoBitRate": String(size.videoBitRate), "AudioBitRate": String(DownloadSize.audioBitRate), "MaxAudioChannels": "2", "SegmentContainer": "ts",
                      "AllowVideoStreamCopy": "false", "AllowAudioStreamCopy": "false", "EnableAutoStreamCopy": "false",
                      "EnableAdaptiveBitrateStreaming": "false", "EnableTrickplay": "false", "Context": "Static", "SubtitleStreamIndex": "-1",
                      "PlaySessionId": sessionID, "DeviceId": api.deviceID]
@@ -220,7 +238,7 @@ enum HLSDownloadPlan {
         catch { records[record.id] = previous; throw error }
     }
 
-    func start(_ item: MediaItem, account: Account, api: JellyfinAPI) throws {
+    func start(_ item: MediaItem, account: Account, api: JellyfinAPI, size: DownloadSize = .standard) throws {
         guard storageFailure == nil else { throw HLSDownloadError.storage }
         guard !api.isSimulatorPreview else { throw ReelError.previewProtected }
         guard api.server == account.server, api.userID == account.userID, api.token == account.token else { throw ReelError.unauthorized }
@@ -228,7 +246,7 @@ enum HLSDownloadPlan {
         guard api.gatewayHeaders.isEmpty else { throw HLSDownloadError.unsupportedGateway }
         let key = Downloads.key(account: account, item: item)
         cancel(key)
-        let record = HLSDownloadRecord(account: account, api: api, item: item)
+        let record = { var record = HLSDownloadRecord(account: account, api: api, item: item); record.size = size; return record }()
         try update(record)
         apis[record.id] = api
         emit(.changed(record))
@@ -255,7 +273,7 @@ enum HLSDownloadPlan {
                 try self.update(current)
                 try Task.checkCancellation()
                 guard current.stage == .preparing else { self.cleanup(record.id); return }
-                let url = try HLSDownloadPlan.url(api: api, item: beginning, source: source, sessionID: sessionID)
+                let url = try HLSDownloadPlan.url(api: api, item: beginning, source: source, sessionID: sessionID, size: size)
                 let asset = AVURLAsset(url: url)
                 let configuration = AVAssetDownloadConfiguration(asset: asset, title: item.title)
                 configuration.auxiliaryContentConfigurations = []

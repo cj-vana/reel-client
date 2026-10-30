@@ -109,7 +109,8 @@ private struct OriginalDownloadIntent: Codable {
         return streams.filter { $0.Type == "Video" }.allSatisfy { ["h264", "hevc"].contains($0.Codec?.lowercased() ?? "") }
             && streams.filter { $0.Type == "Audio" }.allSatisfy { ["aac", "alac", "ac3", "eac3", "mp3"].contains($0.Codec?.lowercased() ?? "") }
     }
-    func download(_ item: MediaItem, account: Account, api: JellyfinAPI, optimized: Bool = false) {
+    /// `size` applies to an optimized download, which Jellyfin converts for this device.
+    func download(_ item: MediaItem, account: Account, api: JellyfinAPI, optimized: Bool = false, size: DownloadSize = .standard) {
         let key = Self.key(account: account, item: item)
         guard storageReady else { errors[key] = HLSDownloadError.storage.localizedDescription; return }
         guard !active.contains(key), saved(account: account, item: item) == nil else { return }
@@ -125,7 +126,7 @@ private struct OriginalDownloadIntent: Codable {
             do {
                 let engine = hlsEngine()
                 if engine.retryCompleted(key) { return }
-                try engine.start(item, account: account, api: api)
+                try engine.start(item, account: account, api: api, size: size)
                 if originals[key] != nil { finishOriginal(key) }
             }
             catch { requested[key] = item; errors[key] = error.localizedDescription; self.optimized.insert(key) }
