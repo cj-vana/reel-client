@@ -9,10 +9,11 @@ An Electron shell around the web client (`apps/web`, `platform: 'desktop'`). The
 | `src/main.mjs` | App start, the single window, its in-memory session, the `reel:` asset protocol, permissions, navigation lockdown, the close handshake. |
 | `src/policy.mjs` | `APP_URL`, window options (sandbox, context isolation, an in-memory `reel-…` partition), fullscreen permission rules. |
 | `src/assets.mjs` | Serves the staged web build over `reel:` and checks every file against its manifest. |
-| `src/preload.cjs` | The only page APIs: `ReelDesktop` (connections, preferences, close), `ReelBrowsePreferences`, `ReelUpdates`. Each validates its input before IPC. |
+| `src/preload.cjs` | The only page APIs: `ReelDesktop` (connections, preferences, close), `ReelBrowsePreferences`, `ReelUpdates`, `ReelOffline`. Each validates its input before IPC. |
 | `src/bridge.mjs`, `src/browse-bridge.mjs`, `src/updates-bridge.mjs` | IPC handlers. Each accepts calls only from the window's own main frame at `APP_URL`. |
 | `src/store.mjs` | `DesktopStore`: preferences (atomic, compare-and-swap by revision) and remembered connections, encrypted by `src/crypto-provider.mjs` through the OS. |
 | `src/updates.mjs` | Release checks; a Developer ID-signed Mac build installs through Squirrel.Mac. |
+| `src/offline.mjs`, `src/offline-bridge.mjs` | Downloads for watching offline: `OfflineDownloads` fetches the converted HLS stream through its own in-memory session, keeps `offline/index.json` in the app data folder, and the bridge serves a finished download at `reel://app/offline/<id>/`. |
 | `scripts/build.mjs` | Builds the web client and stages it with the shell in `.cache/stage`. |
 | `scripts/package.mjs` | electron-packager from a checksummed Electron download (`scripts/electron-checksums.json`), fuses, payload verification against the stage, and Mac signing when `REEL_MACOS_SIGN=1`. |
 | `scripts/check.mjs` | Syntax, exact dependency pins and lock agreement. |
@@ -29,4 +30,5 @@ From `apps/desktop`, after `npm ci --ignore-scripts`: `npm run check`, `npm test
 - A new page API goes in `src/preload.cjs` with its own validation and a handler that checks the sender like `updates-bridge.mjs`. Never expose `ipcRenderer` or a generic channel.
 - The QA flavor talks only to loopback; anything that reaches the network from the main process must be off in QA, as the update service is.
 - Signing happens after the fuses are flipped; flipping them later would break the signature.
-- The session is in memory: web storage does not survive a restart. Anything that must persist goes through `DesktopStore`.
+- The session is in memory: web storage does not survive a restart. Anything that must persist goes through `DesktopStore`, or `OfflineDownloads` for downloads.
+- A download never writes the access token: it travels only in the Authorization header. Every playlist entry must stay on the server and path the download started from (`onServer` in `src/offline.mjs`), and the page may read only a finished download's playlist, numbered segments and artwork. `tests/offline.test.mjs` runs a whole download against a fake Jellyfin; keep it passing when either rule changes.

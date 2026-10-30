@@ -14,7 +14,7 @@ The TypeScript client that runs in browsers, as an installable PWA, inside the d
 | `src/audio-fingerprint.ts`, `src/intro-detection.ts` | Finding intros and credits from audio when the server has no segments. The algorithm is mirrored in `apps/apple/Reel/Core/AudioFingerprint.swift`; change both together. |
 | `src/storage.ts` | Remembered connections (browser storage, or the desktop bridge), device id. |
 | `src/library-*.ts` | Library browsing, filters, saved browse choices, watched actions. |
-| `src/desktop*.ts` | The desktop bridges (`window.ReelDesktop`, `ReelBrowsePreferences`, `ReelUpdates`), validated before use. |
+| `src/desktop*.ts` | The desktop bridges (`window.ReelDesktop`, `ReelBrowsePreferences`, `ReelUpdates`, `ReelOffline`), validated before use. `src/desktop-offline.ts` holds the download sizes and the request the page sends. |
 | `src/tv-*.ts`, `src/player-presentation.ts` | Remote navigation, the TV connect form, overlay and focus rules. |
 | `src/pwa*.ts`, `src/pwa-worker.js` | Install, update prompt and the offline cache of the public interface. |
 | `src/styles/` | Tokens in `tokens.css`; TV overrides in `tv.css` under `html[data-layout="tv"]`. |
@@ -30,7 +30,7 @@ From `apps/web`, after `npm ci --ignore-scripts`:
 
 ## The fixture server
 
-`scripts/fixture-server.mjs` is a fake Jellyfin. The password is always `demo`, and the username picks the behavior: `slow`, `flaky`, `expired`, `segments-unavailable`, `intro-scan-…` (330 second episodes with a shared theme, served as MP3 for the scan), `recent-…` (episode shelf modes driven by `POST /qa/episodes`), and so on. `GET /qa/state` returns every call and playback report; `POST /qa/reset` clears them. Tests use their own username prefix so their state never mixes.
+`scripts/fixture-server.mjs` is a fake Jellyfin. The password is always `demo`, and the username picks the behavior: `slow`, `flaky`, `expired`, `segments-unavailable`, `intro-scan-…` (330 second episodes with a shared theme, served as MP3 for the scan), `recent-…` (episode shelf modes driven by `POST /qa/episodes`), and so on. Desktop download routes (`/Videos/<id>/master.m3u8`, `main.m3u8`, `hls1/main/<n>.ts`) answer only with the token in the Authorization header and a `reel-download-…` play session, as the desktop download manager sends them. `GET /qa/state` returns every call and playback report; `POST /qa/reset` clears them. Tests use their own username prefix so their state never mixes.
 
 ## Things that break quietly
 
