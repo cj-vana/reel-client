@@ -267,7 +267,9 @@ final class MediaHubTests: XCTestCase {
         hub.play(tracks, account: account, api: api)
         try await ready(hub)
         XCTAssertEqual(hub.current?.id, "hub-track-1")
-        try await Task.sleep(for: .milliseconds(350))
+        // Audio can take a moment to start on a busy machine, so wait for the clock to move.
+        let started = Date()
+        while hub.player.currentTime().seconds <= 0, Date().timeIntervalSince(started) < 5 { try await Task.sleep(for: .milliseconds(100)) }
         XCTAssertGreaterThan(hub.player.currentTime().seconds, 0)
         hub.pause(); hub.seek(8)
         try await Task.sleep(for: .milliseconds(400))
