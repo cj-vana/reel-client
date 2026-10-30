@@ -1,14 +1,46 @@
 version: 2
+# One grouped pull request per ecosystem each month, so updates arrive together and CI tests them
+# together.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
   - package-ecosystem: npm
     directory: /apps/web
     schedule:
       interval: monthly
+    groups:
+      web:
+        patterns: ['*']
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule:
       interval: monthly
+    groups:
+      desktop:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /apps/tizen
+    schedule:
+      interval: monthly
+    groups:
+      tizen:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /apps/roku
+    schedule:
+      interval: monthly
+    groups:
+      roku:
+        patterns: ['*']
+  - package-ecosystem: pip
+    directory: /apps/apple/qa
+    schedule:
+      interval: monthly
+    groups:
+      apple-qa:
+        patterns: ['*']
