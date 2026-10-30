@@ -3,6 +3,8 @@ import { type ItemPage, type MediaItem, TICKS } from './types.ts';
 
 type EpisodeAPI = Pick<JellyfinAPI, 'page'>;
 export interface IntroSegment { start: number; end: number }
+/** Seconds into the item: the intro to skip, and where the credits begin. */
+export interface Markers { intro?: IntroSegment; credits?: number }
 export interface EpisodeContext {
   previous?: MediaItem;
   next?: MediaItem;
@@ -71,29 +73,35 @@ export async function loadEpisodeContext(api: EpisodeAPI, item: MediaItem, signa
   return { previous: index > 0 ? adjacent[index - 1] : undefined, next: index >= 0 ? adjacent[index + 1] : undefined, seasons, selectedSeason, episodes };
 }
 
-export async function loadIntroSegment(api: Pick<JellyfinAPI, 'request'>, item: MediaItem, signal: AbortSignal): Promise<IntroSegment | undefined> {
+/**
+ * The intro and the start of the credits as the server marks them (Jellyfin's Intro and Outro media segments).
+ * Chapter names are never read as markers.
+ */
+export async function loadServerMarkers(api: Pick<JellyfinAPI, 'request'>, item: MediaItem, signal: AbortSignal): Promise<Markers> {
   checkCancellation(signal);
-  if (item.Type !== 'Episode' && item.Type !== 'Movie') return undefined;
+  if (item.Type !== 'Episode' && item.Type !== 'Movie') return {};
   let response: { Items?: unknown[] } | undefined;
   try {
-    response = await api.request(`MediaSegments/${encodeURIComponent(item.Id)}`, { query: { includeSegmentTypes: 'Intro' }, signal });
+    response = await api.request(`MediaSegments/${encodeURIComponent(item.Id)}`, { signal });
   } catch (error) {
     checkCancellation(signal);
-    if (error instanceof ApiError && [404, 405, 501].includes(error.status)) return undefined;
+    if (error instanceof ApiError && [404, 405, 501].includes(error.status)) return {};
     throw error;
   }
   checkCancellation(signal);
-  if (!Array.isArray(response?.Items)) return undefined;
+  if (!Array.isArray(response?.Items)) return {};
   const runtime = typeof item.RunTimeTicks === 'number' && Number.isFinite(item.RunTimeTicks) && item.RunTimeTicks > 0 ? item.RunTimeTicks / TICKS : undefined;
-  const segments: IntroSegment[] = [];
+  const intros: IntroSegment[] = [], outros: IntroSegment[] = [];
   for (const value of response.Items.slice(0, 1000)) {
     if (!value || typeof value !== 'object') continue;
     const segment = value as Record<string, unknown>;
-    if (segment.Type !== 'Intro' || segment.ItemId !== undefined && segment.ItemId !== item.Id) continue;
+    if (segment.Type !== 'Intro' && segment.Type !== 'Outro' || segment.ItemId !== undefined && segment.ItemId !== item.Id) continue;
     const start = segment.StartTicks, end = segment.EndTicks;
     if (typeof start !== 'number' || typeof end !== 'number' || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start) continue;
     if (runtime !== undefined && end / TICKS > runtime) continue;
-    segments.push({ start: start / TICKS, end: end / TICKS });
+    (segment.Type === 'Intro' ? intros : outros).push({ start: start / TICKS, end: end / TICKS });
   }
-  return segments.sort((a, b) => a.start - b.start || a.end - b.end)[0];
+  const first = (list: IntroSegment[]) => list.sort((a, b) => a.start - b.start || a.end - b.end)[0];
+  const intro = first(intros), outro = first(outros);
+  return { ...(intro ? { intro } : {}), ...(outro && outro.start > 0 ? { credits: outro.start } : {}) };
 }
