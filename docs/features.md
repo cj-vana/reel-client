@@ -13,7 +13,7 @@ Reel connects directly to your Jellyfin servers. Your server controls the availa
 
 Video fills the playback window. Overlay controls provide seeking, chapters, speed, quality, audio and subtitle choices where the platform and stream support them.
 
-For shows, use Previous and Next, open the season browser, or enable automatic next episode. The countdown can be cancelled. Skip Intro appears when the server supplies valid intro timestamps; Reel does not guess intro boundaries.
+For shows, use Previous and Next, open the season browser, or enable automatic next episode. The countdown can be cancelled. Skip Intro uses the server's intro markers when they exist. Without them, every app except Roku finds the intro and the credits by matching the theme music an episode shares with the next or previous one, and offers Next episode once the credits start. Reel never guesses from elapsed time or chapter names, and shows nothing when the audio does not match. On the web, desktop and TV web apps, turn on Skip intros automatically in Settings to skip without pressing anything; a Watch it button takes you back. The Apple apps follow the intro and outro settings saved on your Jellyfin server.
 
 TV layouts support directional navigation and visible focus. Phone and tablet layouts use touch targets, native sheets and adaptive navigation. Desktop supports keyboard and pointer input.
 

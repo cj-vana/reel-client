@@ -8,6 +8,8 @@ A random app device identifier, quality and private-viewing preferences remain i
 
 Normal device Release playback can send start, progress, pause and stop reports to Jellyfin. Failed progress and owned-resource cleanup can persist locally with server/user identity, item/session identifiers and playback position. This journal contains no password or access token and replays through a matching signed-in account. Private viewing suppresses history reports; the server still receives authentication, artwork, browsing, stream negotiation and media requests. Owned encoder cleanup and logout can still run.
 
+When the server has not marked an episode's intro or credits, the app asks it for a low-quality audio copy of the opening and closing minutes of that episode and a neighboring one, and compares them on the device. These requests use their own playback session and are never reported as watched. The times found, not the audio, stay in app-local settings and are removed when you remove that account. Turn off Find intros and credits in Settings to stop it.
+
 Debug builds and every simulator build protect nonloopback servers from history and library mutations. Synthetic loopback fixtures allow mutable tests. This protection does not imply that authentication, browsing or playback requests are invisible to a server.
 
 Removing a connection deletes its saved sign-in locally and attempts server-session revocation after playback/report cleanup. It does not delete the server account, media or existing server-side history. A server may retain its own request logs. Use HTTPS for remote servers; the connection form permits HTTP only for recognized local/private addresses and explains that it is unencrypted.

@@ -180,7 +180,7 @@ struct TVNativePlayer: UIViewControllerRepresentable {
             cache.metadataFormat = formatDescription
             cache.signature = ""
         }
-        let signature = "\(coordinator.quality.rawValue)|\(coordinator.playback.speed)|\(item?.id ?? "")|\(coordinator.preferences.bitrateLocked)|\(coordinator.preferences.rateLocked)|\(String(describing: currentID))|\(coordinator.playback.currentSourceID ?? "")|\(String(describing: coordinator.subtitleChoice))|\(coordinator.subtitleSelectionConfirmed)|\(coordinator.changingSubtitles)|\(coordinator.subtitleMetadataLoading)|\(coordinator.subtitleMetadata?.hashValue ?? 0)|\(coordinator.subtitleMetadataError ?? "")|\(episodes.previous?.id ?? "")|\(episodes.next?.id ?? "")|\(episodes.intro?.id ?? "")|\(episodes.autoplay)|\(episodes.isEpisode)|\(episodes.switching)"
+        let signature = "\(coordinator.quality.rawValue)|\(coordinator.playback.speed)|\(item?.id ?? "")|\(coordinator.preferences.bitrateLocked)|\(coordinator.preferences.rateLocked)|\(String(describing: currentID))|\(coordinator.playback.currentSourceID ?? "")|\(String(describing: coordinator.subtitleChoice))|\(coordinator.subtitleSelectionConfirmed)|\(coordinator.changingSubtitles)|\(coordinator.subtitleMetadataLoading)|\(coordinator.subtitleMetadata?.hashValue ?? 0)|\(coordinator.subtitleMetadataError ?? "")|\(episodes.previous?.id ?? "")|\(episodes.next?.id ?? "")|\(episodes.intro?.id ?? "")|\(episodes.inCredits)|\(episodes.autoplay)|\(episodes.isEpisode)|\(episodes.switching)"
         guard signature != cache.signature else { return }
         cache.signature = signature
         let quality = UIMenu(title: "Quality", image: UIImage(systemName: "slider.horizontal.3"), children: StreamQuality.allCases.map { value in
@@ -206,7 +206,14 @@ struct TVNativePlayer: UIViewControllerRepresentable {
             })
             menus.append(UIAction(title: "Episodes", image: UIImage(systemName: "rectangle.stack"), attributes: enabled ? [] : .disabled) { _ in episodes.openBrowser() })
         }
-        controller.contextualActions = episodes.intro == nil ? [] : [UIAction(title: "Skip intro", image: UIImage(systemName: "forward.end")) { _ in episodes.skipIntro() }]
+        if episodes.intro != nil {
+            controller.contextualActions = [UIAction(title: "Skip intro", image: UIImage(systemName: "forward.end")) { _ in episodes.skipIntro() }]
+        } else if episodes.inCredits, let next = episodes.next, !coordinator.transitioning, !episodes.switching {
+            // Once the credits roll, the next episode is one press away.
+            controller.contextualActions = [UIAction(title: "Next episode", image: UIImage(systemName: "forward.end.fill")) { _ in episodes.play(next) }]
+        } else {
+            controller.contextualActions = []
+        }
         if let chapters = item?.Chapters, !chapters.isEmpty {
             menus.append(UIMenu(title: "Chapters", image: UIImage(systemName: "list.bullet.rectangle"), children: chapters.enumerated().map { index, chapter in
                 UIAction(title: chapter.Name ?? "Chapter \(index + 1)", attributes: coordinator.changingSubtitles ? .disabled : []) { _ in
@@ -360,6 +367,7 @@ final class TVPlayerPresenter: UIViewController {
             _ = episodes.previous
             _ = episodes.next
             _ = episodes.intro
+            _ = episodes.inCredits
             _ = episodes.autoplay
             _ = episodes.isEpisode
             _ = episodes.switching

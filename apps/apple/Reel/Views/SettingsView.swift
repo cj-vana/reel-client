@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(ServerPreferences.self) private var preferences
     @Environment(MediaHub.self) private var mediaHub
     @AppStorage("streamQuality") private var quality = StreamQuality.original.rawValue
+    @AppStorage("findMarkers") private var findMarkers = true
     @State private var confirmSignOut = false
     @State private var signingOut = false
     @State private var error: String?
@@ -38,6 +39,13 @@ struct SettingsView: View {
                             .font(.footnote).foregroundStyle(Color.reelMuted)
                     }
                 }.accessibilityIdentifier("privateViewing")
+                Toggle(isOn: $findMarkers) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Find intros and credits")
+                        Text("When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes. Your server streams a low-quality copy of that audio to do it.")
+                            .font(.footnote).foregroundStyle(Color.reelMuted)
+                    }
+                }.accessibilityIdentifier("findMarkers")
                 if session.api?.isSimulatorPreview == true { Text("This build doesn’t change the library or watch history on this server, even after relaunching.").font(.footnote).foregroundStyle(Color.reelMuted) }
                 Picker("Streaming quality", selection: $quality) { ForEach(StreamQuality.allCases) { Text($0.label).tag($0.rawValue) } }
                     // The chosen value reads as muted text, like every other value in Settings, not in the accent.
