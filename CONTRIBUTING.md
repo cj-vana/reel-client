@@ -10,6 +10,12 @@ Thanks for helping. Reel is early software, so keep changes small and say which 
 4. Add a test for any behavior change, and try the real screen or player as well as the automated tests.
 5. Open a pull request that says what changed, how you checked it, and what you could not check.
 
+## Pull requests and CI
+
+`main` only changes through pull requests. A pull request merges when the **CI result** check passes and the branch is up to date with `main`. Merges keep a merge commit; squash and rebase merges are off.
+
+CI skips the app jobs a change cannot affect, so a pull request that only touches the Roku channel does not wait for the Apple builds. A change to `scripts/`, the workflows or any file outside the app folders runs everything. The iOS and tvOS UI journeys take a long time, so they run on demand: start the **Verify** workflow from the Actions tab and choose the platform.
+
 ## Rules for test data
 
 - Use a throwaway server and account, or the synthetic fixture servers in `apps/apple/qa` and `apps/tvos/qa`. They bind to loopback and make up their own media.
