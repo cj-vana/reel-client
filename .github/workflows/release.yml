@@ -167,7 +167,10 @@ jobs:
           shopt -s nullglob
           packages=(.cache/packages/*.ipk)
           expected=".cache/packages/app.reelclient.tv_${BASE_VERSION}_all.ipk"
-          [ "${#packages[@]}" -eq 1 ] && [ "${packages[0]}" = "$expected" ] || { echo "Expected only $expected, found: ${packages[*]}" >&2; exit 1; }
+          if [ "${#packages[@]}" -ne 1 ] || [ "${packages[0]}" != "$expected" ]; then
+            echo "Expected only $expected, found: ${packages[*]}" >&2
+            exit 1
+          fi
           python3 scripts/inspect-webos.py "$expected"
           cp "$expected" "$RUNNER_TEMP/out/reel-webos-${TAG}.ipk"
       - name: Install ffmpeg
