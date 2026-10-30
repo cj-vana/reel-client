@@ -2,7 +2,7 @@
 
 # Reel
 
-A Jellyfin client for iPhone, iPad, Apple TV, the web, desktop and TV. It is open source under the MIT license.
+A Jellyfin client for iPhone, iPhone Duo, iPad, Apple TV, the web, desktop and TV. It is open source under the MIT license.
 
 ## Screenshots
 
@@ -45,6 +45,17 @@ These use the demo library, with made-up titles and generated artwork. The [web 
 - Download videos for offline viewing on iPhone, iPad and the desktop app, as a copy your server converts at 1080p, 720p or 480p.
 
 What you can do varies by client and by server. The [feature guide](docs/features.md) has the details.
+
+## Jellyfin on iPhone Duo
+
+Reel is laid out for the foldable iPhone Duo, folded and open:
+
+- Folded, the outer screen gets the phone layout.
+- Open, screens lay out as two pages either side of the crease. Text and controls stay off the fold; only artwork runs across it.
+- Stood half open like a laptop, the video plays above the fold and the controls move to the lower half. Held half open like a book, the controls keep clear of the fold.
+- When the hinge moves during playback, the controls appear in their new place.
+
+It installs like the iPhone app: see [iPhone, iPhone Duo and iPad](docs/install/apple.md#iphone-and-ipad).
 
 ## Clients
 
