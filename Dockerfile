@@ -6,10 +6,6 @@ COPY apps/web/ ./
 RUN npm run build && node scripts/check-notices.mjs
 
 FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951 AS runtime
-# The source label links the published image to this repository on the GitHub Container Registry.
-LABEL org.opencontainers.image.source="https://github.com/cj-vana/reel-client" \
-      org.opencontainers.image.description="Reel, a Jellyfin web client" \
-      org.opencontainers.image.licenses="MIT"
 RUN rm -rf /usr/share/nginx/html/*
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /build/dist/ /usr/share/nginx/html/
