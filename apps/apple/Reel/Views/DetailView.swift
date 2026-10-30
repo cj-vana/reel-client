@@ -414,32 +414,41 @@ struct DetailView: View {
             } else {
                 let original = Downloads.compatible(current)
                 let smaller = Downloads.canOptimize(current)
-                if original && smaller {
+                if smaller {
                     Menu {
-                        downloadButton(optimized: false, account: account, api: api, tile: false)
-                        downloadButton(optimized: true, account: account, api: api, tile: false)
+                        if original { originalDownload(account: account, api: api, tile: false) }
+                        Section("Converted by your server") {
+                            ForEach(DownloadSize.allCases) { size in
+                                Button { downloads.download(current, account: account, api: api, optimized: true, size: size) } label: {
+                                    Label {
+                                        Text(size.title)
+                                        Text(size.perHour)
+                                    } icon: { Image(systemName: "arrow.down.circle.dotted") }
+                                }.accessibilityIdentifier(size == .standard ? "downloadOptimized" : "downloadOptimized-" + size.rawValue)
+                            }
+                        }
                     } label: { ActionTile(title: "Download", systemImage: "arrow.down.circle") }
                         .frame(width: tileWidth).accessibilityIdentifier("downloadMenu").accessibilityLabel("Download")
-                } else if original || smaller {
-                    downloadButton(optimized: smaller, account: account, api: api, tile: true)
+                } else if original {
+                    originalDownload(account: account, api: api, tile: true)
                         .buttonStyle(.plain).frame(width: tileWidth)
                 }
             }
         }
     }
 
-    /// A download choice: a menu item with its trade-off, or a tile when it is the only choice.
-    private func downloadButton(optimized: Bool, account: Account, api: JellyfinAPI, tile: Bool) -> some View {
-        Button { downloads.download(current, account: account, api: api, optimized: optimized) } label: {
+    /// The original file: a menu item with its trade-off, or a tile when it is the only choice.
+    private func originalDownload(account: Account, api: JellyfinAPI, tile: Bool) -> some View {
+        Button { downloads.download(current, account: account, api: api) } label: {
             if tile {
                 ActionTile(title: "Download", systemImage: "arrow.down.circle")
             } else {
                 Label {
-                    Text(optimized ? "Smaller copy" : "Original quality")
-                    Text(optimized ? "720p video that uses less storage." : "Full size. External subtitles aren’t included.")
-                } icon: { Image(systemName: optimized ? "arrow.down.circle.dotted" : "arrow.down.circle") }
+                    Text("Original quality")
+                    Text("Full size. External subtitles aren’t included.")
+                } icon: { Image(systemName: "arrow.down.circle") }
             }
-        }.accessibilityIdentifier(optimized ? "downloadOptimized" : "download")
+        }.accessibilityIdentifier("download")
     }
 
     // MARK: Overview and options

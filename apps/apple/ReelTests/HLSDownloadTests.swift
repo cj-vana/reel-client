@@ -39,6 +39,23 @@ import XCTest
         XCTAssertThrowsError(try HLSDownloadPlan.url(api: api, item: video(), source: MediaSource(Id: "source", TranscodingUrl: "https://media.example.com/another-service/master.m3u8"), sessionID: "s"))
     }
 
+    func testEachDownloadSizePinsItsOwnResolutionAndBitrate() throws {
+        let api = JellyfinAPI(server: URL(string: "https://media.example.com")!, token: "private-token", userID: "user", deviceID: "offline-device", historyEnabled: false)
+        let source = MediaSource(Id: "source", SupportsDirectPlay: false, TranscodingUrl: "/Videos/movie-1/master.m3u8?VideoBitRate=40000000&MaxHeight=2160")
+        let expected: [DownloadSize: (String, String, String)] = [.high: ("1920", "1080", "6000000"), .standard: ("1280", "720", "1872000"), .small: ("854", "480", "900000")]
+        for size in DownloadSize.allCases {
+            let url = try HLSDownloadPlan.url(api: api, item: video(), source: source, sessionID: "s", size: size)
+            let query = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+            func values(_ name: String) -> [String] { query.filter { $0.name.lowercased() == name.lowercased() }.compactMap(\.value) }
+            XCTAssertEqual(values("MaxWidth"), [expected[size]!.0], size.rawValue)
+            XCTAssertEqual(values("MaxHeight"), [expected[size]!.1], size.rawValue)
+            XCTAssertEqual(values("VideoBitRate"), [expected[size]!.2], size.rawValue)
+            XCTAssertEqual(values("AudioBitRate"), ["128000"], size.rawValue)
+        }
+        // An hour of standard video and audio: (1,872,000 + 128,000) bits a second for 3,600 seconds.
+        XCTAssertEqual(DownloadSize.standard.perHour, "About " + ByteCountFormatter.string(fromByteCount: 900_000_000, countStyle: .file) + " an hour")
+    }
+
     func testManifestMetadataContainsNoTokensOrRemoteMediaURLs() throws {
         let api = JellyfinAPI(server: URL(string: "https://media.example.com/jellyfin")!, token: "private-token", userID: "user", deviceID: "device")
         let account = Account(server: api.server, token: "private-token", userID: "user", name: "User", serverName: "Server")

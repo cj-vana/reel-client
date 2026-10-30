@@ -21,7 +21,7 @@ TV layouts support directional navigation and visible focus. Phone and tablet la
 
 | Capability | Availability |
 | --- | --- |
-| Offline video downloads | Native iPhone and iPad app; compatible original files and supported optimized downloads |
+| Offline video downloads | Native iPhone and iPad app; compatible original files, or a copy your server converts at 1080p, 720p or 480p |
 | Installable web app | Supported desktop and mobile browsers |
 | Offline web launch | PWA application shell; server media still requires a connection |
 | Self-hosting | Static web files or Docker |
