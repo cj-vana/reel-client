@@ -32,6 +32,49 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  # Pull requests skip app jobs their changes cannot affect. Pushes to main and manual runs test
+  # everything, and any path outside a known app folder selects everything too.
+  changes:
+    name: Changed areas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      apple: ${{ steps.areas.outputs.apple }}
+      web: ${{ steps.areas.outputs.web }}
+      roku: ${{ steps.areas.outputs.roku }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        # No pipes: a failure here must fail the step, never leave the outputs empty.
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            git diff --name-only "$BASE...HEAD" > "$RUNNER_TEMP/changed.txt"
+            python3 -B scripts/ci-changed-areas.py < "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/areas.txt"
+          else
+            python3 -B scripts/ci-changed-areas.py --all > "$RUNNER_TEMP/areas.txt"
+          fi
+          cat "$RUNNER_TEMP/areas.txt" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/areas.txt"
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Go verifies the module against its checksum database; shellcheck comes with the runner.
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: |
+          "$(go env GOPATH)/bin/actionlint" -color
+
   source-checks:
     name: Privacy scan and Python tests
     runs-on: ubuntu-24.04
@@ -68,6 +111,8 @@ jobs:
 
   web:
     name: Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -117,6 +162,8 @@ jobs:
 
   desktop:
     name: Desktop
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -138,6 +185,8 @@ jobs:
 
   tizen:
     name: Samsung TV
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -147,6 +196,10 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/tizen/package-lock.json
       - name: Stage the shared TV payload
         working-directory: apps/web
         run: |
@@ -162,6 +215,8 @@ jobs:
 
   roku:
     name: Roku
+    needs: changes
+    if: needs.changes.outputs.roku == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -182,6 +237,8 @@ jobs:
 
   docker:
     name: Docker image
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -195,6 +252,8 @@ jobs:
 
   ios:
     name: iOS
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     timeout-minutes: 90
     env:
@@ -233,6 +292,8 @@ jobs:
 
   tvos:
     name: tvOS
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     timeout-minutes: 90
     env:
@@ -268,6 +329,41 @@ jobs:
             ${{ runner.temp }}/reel-ci/tvos-test/logs
           if-no-files-found: warn
           retention-days: 3
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Refuses a pull request that adds a dependency with a known high or critical vulnerability.
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  # The one check branch protection requires. It passes only when every job above passed, or was
+  # skipped because the change could not affect it.
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, workflows, source-checks, web, desktop, tizen, roku, docker, ios, tvos, dependency-review]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped as unaffected
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r '"| Job | Result |", "|---|---|", (to_entries[] | "| \(.key) | \(.value.result) |")' <<< "$NEEDS" >> "$GITHUB_STEP_SUMMARY"
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          jq -e '
+            .changes.result == "success" and .workflows.result == "success" and .["source-checks"].result == "success"
+            and ([.changes.outputs.apple, .changes.outputs.web, .changes.outputs.roku] | all(. == "true" or . == "false"))
+            and (to_entries | all(.value.result == "success" or .value.result == "skipped"))
+          ' <<< "$NEEDS" > /dev/null
 
   ios-ui:
     name: iOS UI journeys
