@@ -8,6 +8,8 @@ Install [XcodeGen](https://github.com/yonaskolb/XcodeGen) first (`brew install x
 
 ## iPhone and iPad
 
+These steps also install Reel on iPhone Duo; the same app adapts to its folded and open screens.
+
 1. In Xcode, add your Apple Account under Settings > Accounts.
 2. From the repository root, run `cd apps/apple && xcodegen generate`, then open `Reel.xcodeproj`.
 3. Select the Reel target, open Signing & Capabilities, and choose your team. Change the bundle identifier to one you control.
