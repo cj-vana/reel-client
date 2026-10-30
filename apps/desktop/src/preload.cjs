@@ -50,3 +50,26 @@ contextBridge.exposeInMainWorld('ReelBrowsePreferences',Object.freeze({
   return dispose;
  }
 }));
+
+// Updates: read the state, check now, restart into a downloaded update, or open the release page. Nothing the
+// page passes reaches the main process except the operation's name.
+const updatesChannel='reel:updates:v1',updatesStateChannel='reel:updates:state:v1';
+const updatesInvoke=operation=>ipcRenderer.invoke(updatesChannel,{operation});
+const validUpdateState=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===4
+ &&['idle','off','checking','current','available','downloading','ready','error'].includes(value.status)
+ &&(value.version===null||typeof value.version==='string'&&/^\d+\.\d+\.\d+$/.test(value.version))
+ &&['install','download'].includes(value.mode)&&(value.checkedAt===null||Number.isSafeInteger(value.checkedAt));
+let disposeUpdates;
+contextBridge.exposeInMainWorld('ReelUpdates',Object.freeze({
+ state:()=>updatesInvoke('state'),
+ check:()=>updatesInvoke('check'),
+ install:()=>updatesInvoke('install'),
+ download:()=>updatesInvoke('download'),
+ onChange:callback=>{
+  disposeUpdates?.();if(typeof callback!=='function')return()=>{};
+  const listener=(_event,value)=>{if(validUpdateState(value)){try{callback(Object.freeze({...value}));}catch{/* A view callback cannot break the subscription. */}}};
+  ipcRenderer.on(updatesStateChannel,listener);
+  const dispose=()=>{ipcRenderer.removeListener(updatesStateChannel,listener);if(disposeUpdates===dispose)disposeUpdates=undefined;};disposeUpdates=dispose;
+  return dispose;
+ }
+}));

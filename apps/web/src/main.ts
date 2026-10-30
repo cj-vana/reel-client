@@ -6,6 +6,7 @@ import { browserDecoder, MarkerDetector, MarkerStore } from './intro-detection.t
 import { removeConnectionAndRevoke, revokeUnusedSession } from './connection-actions.ts';
 import { refreshWatchedDetail } from './detail-status.ts';
 import { DesktopBrowsePreferences } from './desktop-browse.ts';
+import { updatesBridge, updateSummary, type UpdateState } from './desktop-updates.ts';
 import type { BrowseCleanupNotice } from './browse-bridge.ts';
 import { captureBrowseFocus, restoreBrowseFocus, type BrowseFocus } from './library-focus.ts';
 import { LibraryBrowser, WatchedActions, durableBrowseStorage, hasBrowseAlias } from './library-browser.ts';
@@ -47,6 +48,18 @@ const artwork = new ArtworkCache();
 // Engines without a Web Audio decoder keep the server's markers only.
 const markerDecoder = browserDecoder();
 const markerDetector = markerDecoder ? new MarkerDetector(markerDecoder, new MarkerStore(storage)) : undefined;
+// Desktop only: the main process checks for new releases; Settings shows where that stands.
+const updates = desktop ? updatesBridge(window.ReelUpdates) : undefined;
+let updateState: UpdateState | undefined;
+let checkUpdates = storage.getItem('reel.updates') !== 'false';
+if (updates) {
+  updates.onChange(state => {
+    const wasReady = updateState?.status === 'ready';
+    updateState = state; renderUpdateStatus();
+    if (state.status === 'ready' && !wasReady) toast(updateSummary(state).text + ' Restart from Settings to update.');
+  });
+  void updates.state().then(reply => { if (reply.ok && reply.state && !updateState) { updateState = reply.state; renderUpdateStatus(); } }).catch(() => undefined);
+}
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const items = new Map<string, MediaItem>();
 const positions = new Map<string, number>();
@@ -1336,7 +1349,15 @@ function renderConnections(): void {
 }
 
 function renderSettings(): void {
-  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p><label class="checkbox switch"><span>Find intros and credits</span><input id="find-markers" type="checkbox" role="switch" ${findMarkers && markerDetector ? 'checked' : ''} ${markerDetector ? '' : 'disabled'} /></label><p>${markerDetector ? 'When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes to find them. Your server streams a low-quality copy of that audio to do it.' : 'This device cannot read episode audio, so only intros your server marks can be skipped.'}</p><label class="checkbox switch"><span>Skip intros automatically</span><input id="auto-skip-intro" type="checkbox" role="switch" ${autoSkipIntro ? 'checked' : ''} /></label></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p><p class="field-note">Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.</p></section></div>`);
+  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p><label class="checkbox switch"><span>Find intros and credits</span><input id="find-markers" type="checkbox" role="switch" ${findMarkers && markerDetector ? 'checked' : ''} ${markerDetector ? '' : 'disabled'} /></label><p>${markerDetector ? 'When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes to find them. Your server streams a low-quality copy of that audio to do it.' : 'This device cannot read episode audio, so only intros your server marks can be skipped.'}</p><label class="checkbox switch"><span>Skip intros automatically</span><input id="auto-skip-intro" type="checkbox" role="switch" ${autoSkipIntro ? 'checked' : ''} /></label></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p>${updates ? `<div id="desktop-updates" class="desktop-updates" aria-live="polite"></div><label class="checkbox switch"><span>Check for updates automatically</span><input id="check-updates" type="checkbox" role="switch" ${checkUpdates ? 'checked' : ''} /></label>` : ''}<p class="field-note">Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.</p></section></div>`);
+  renderUpdateStatus();
+}
+function renderUpdateStatus(): void {
+  const node = document.querySelector<HTMLElement>('#desktop-updates');
+  if (!node) return;
+  const summary = updateSummary(updateState), focused = node.contains(document.activeElement);
+  node.innerHTML = `<p>${escape(summary.text)}</p>${summary.action ? button(summary.action.id, summary.action.label, undefined, 'button quiet') : ''}`;
+  if (focused) node.querySelector<HTMLElement>('button')?.focus();
 }
 
 async function liveTV(generation: number, signal: AbortSignal): Promise<void> {
@@ -1521,6 +1542,11 @@ app.addEventListener('click', event => {
       else if (action === 'player-episode' && id && episodeContext?.episodes.some(episode => episode.Id === id)) { cancelAutoNext(); if (id === currentPlayingItem?.Id) showFormat(false); else await playItem(id); }
       else if (action === 'play-previous' && previousEpisode) await playItem(previousEpisode.Id, true);
       else if (action === 'skip-intro') { const intro = markers().intro; if (intro && Number.isFinite(video.duration) && intro.end <= video.duration && video.currentTime >= intro.start && video.currentTime < intro.end) { player.seek(intro.end); updateTransport(); } }
+      else if (action === 'check-update' || action === 'install-update' || action === 'download-update') {
+        const reply = await (action === 'check-update' ? updates?.check() : action === 'install-update' ? updates?.install() : updates?.download())?.catch(() => undefined);
+        if (reply?.state) { updateState = reply.state; renderUpdateStatus(); }
+        else if (!reply?.ok) toast(action === 'download-update' ? 'The release page could not be opened.' : 'Reel could not reach its update service. Try again in a moment.');
+      }
       else if (action === 'watch-intro') { const from = Number(document.querySelector<HTMLElement>('#player-intro-notice')?.dataset.from); hideIntroNotice(); if (Number.isFinite(from)) { player.seek(from); updateTransport(); } }
       else if (action === 'cancel-autoplay') cancelAutoNext(true);
       else if (action === 'close-format') showFormat(false);
@@ -1601,6 +1627,7 @@ app.addEventListener('change', event => {
     changePlaybackSettings(next);
   }
   if (field.id === 'player-season') void track(changePlayerSeason(field.value));
+  if (field.id === 'check-updates') { checkUpdates = field.checked; storage.setItem('reel.updates', String(checkUpdates)); saveDesktopPreferences(); }
   if (field.id === 'find-markers') { findMarkers = field.checked; storage.setItem('reel.markers', String(findMarkers)); if (!findMarkers) { foundMarkers = {}; updateTransport(); } saveDesktopPreferences(); }
   if (field.id === 'auto-skip-intro') { autoSkipIntro = field.checked; storage.setItem('reel.autoskip', String(autoSkipIntro)); saveDesktopPreferences(); }
   if (field.id === 'player-autoplay') { autoNext = field.checked; storage.setItem('reel.autoplay', String(autoNext)); if (!autoNext) cancelAutoNext(true); saveDesktopPreferences(); }
@@ -1613,7 +1640,7 @@ app.addEventListener('change', event => {
   if (field.id === 'season') selectSeason(field.value);
 });
 function saveDesktopPreferences(): void {
-  if (desktop) void track(desktop.savePreferences(quality, history, autoNext, findMarkers, autoSkipIntro)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
+  if (desktop) void track(desktop.savePreferences(quality, history, autoNext, findMarkers, autoSkipIntro, checkUpdates)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
 }
 // The season menu (and the TV season tabs) load that season's episodes into the detail page.
 function selectSeason(season: string): void {

@@ -5,8 +5,9 @@ import { createHash } from 'node:crypto';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const runtimeConfig = qa => `window.REEL_CONFIG = Object.freeze({ previewMode: ${qa === true}, appName: 'Reel', platform: 'desktop' });\n`;
 
-export async function applyPackageFlavor(input, qa, stagePayload) {
-  const flavor = JSON.stringify({ qa }) + '\n', config = runtimeConfig(qa);
+// signed: the package will be signed with a Developer ID, so it can install updates itself (macOS only).
+export async function applyPackageFlavor(input, qa, stagePayload, signed = false) {
+  const flavor = JSON.stringify({ qa, signed: signed === true }) + '\n', config = runtimeConfig(qa);
   const manifestPath = resolve(input, 'web/asset-manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   manifest.files['reel-config.js'] = { sha256: hash(config), bytes: Buffer.byteLength(config) };

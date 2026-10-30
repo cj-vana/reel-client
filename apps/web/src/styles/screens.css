@@ -1121,6 +1121,8 @@ html[data-layout="tv"] .connection-brand { display: inline-flex; }
 .settings-panel p { color: var(--text-2); font-size: .875rem; line-height: 1.6; }
 .settings-panel p svg { width: 18px; height: 18px; margin: -2px 8px 0 0; color: var(--accent); }
 .settings-panel .button { justify-self: start; }
+/* Desktop: the update status and its one action share a row. */
+.desktop-updates { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 /* The caption under a switch belongs to it, so it sits just below the switch rather than a full row away. */
 html:not([data-layout="tv"]) .settings-panel .checkbox.switch + p { margin-top: -8px; }
 .device-symbol {

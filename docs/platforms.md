@@ -21,7 +21,7 @@ On Roku, Skip Intro needs intro markers from your server; every other app also f
 ## Known limits
 
 - There is no store release. You sign the Apple, Samsung and Roku apps yourself.
-- Desktop packages are unsigned. macOS Gatekeeper and Windows SmartScreen may block a downloaded copy. Use a build you made yourself, or approve it under your system's own rules.
+- Windows and Linux desktop packages are unsigned, and Windows SmartScreen may block a downloaded copy. The Mac app is signed and notarized when the release says so; an unsigned one may be blocked by Gatekeeper. Use a build you made yourself, or approve it under your system's own rules.
 - Remembered connections are not available in the Linux desktop app yet. Sign-in lasts for the session.
 - Some LG MP4 files seek to the keyframe before the requested time, so media with widely spaced keyframes can resume a little early.
 - The Samsung app has not been tried on a physical TV yet. Installing it, the on-screen keyboard and playback may need fixes.

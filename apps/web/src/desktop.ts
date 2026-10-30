@@ -4,12 +4,12 @@ export type DesktopCode = 'conflict' | 'locked' | 'corrupt' | 'unavailable' | 'i
 export type DesktopResult<T extends object = object> = ({ ok: true } & T) | { ok: false; code: DesktopCode };
 export type DesktopInitialization = DesktopResult<{
   storeState: 'ready' | 'locked' | 'corrupt' | 'unavailable'; revision?: number; savedConnections?: ConnectionSnapshot;
-  deviceId: string; preferences: { quality: number; history: boolean; autoplay?: boolean; markers?: boolean; autoSkip?: boolean }; preferenceRevision: number;
+  deviceId: string; preferences: { quality: number; history: boolean; autoplay?: boolean; markers?: boolean; autoSkip?: boolean; updates?: boolean }; preferenceRevision: number;
 }>;
 export interface DesktopBridge {
   initialize(): Promise<DesktopInitialization>;
   saveConnections(value: ConnectionSnapshot & { expectedRevision: number }): Promise<DesktopResult<{ revision: number }>>;
-  savePreferences(value: { quality: number; history: boolean; autoplay?: boolean; markers?: boolean; autoSkip?: boolean; expectedRevision: number }): Promise<DesktopResult<{ revision: number }>>;
+  savePreferences(value: { quality: number; history: boolean; autoplay?: boolean; markers?: boolean; autoSkip?: boolean; updates?: boolean; expectedRevision: number }): Promise<DesktopResult<{ revision: number }>>;
   onCloseRequested(callback: (nonce: string) => void): () => void;
   acknowledgeClose(nonce: string): Promise<DesktopResult>;
 }
@@ -56,7 +56,7 @@ export class DesktopSession {
     this.available = initial.storeState === 'ready' && initial.revision !== undefined && initial.savedConnections !== undefined;
     this.storageMessage = this.canRemember ? 'Remembered connections use your operating system’s encrypted storage. Your password is never saved. Leave this off on shared devices.' : messages[initial.storeState === 'ready' ? 'unavailable' : initial.storeState];
     this.preferenceRevision = initial.preferenceRevision;
-    this.storage = memoryStorage({ 'reel.device.v1': initial.deviceId, 'reel.quality': String(initial.preferences.quality), 'reel.history': String(initial.preferences.history), 'reel.autoplay': String(initial.preferences.autoplay ?? true), 'reel.markers': String(initial.preferences.markers ?? true), 'reel.autoskip': String(initial.preferences.autoSkip ?? false) });
+    this.storage = memoryStorage({ 'reel.device.v1': initial.deviceId, 'reel.quality': String(initial.preferences.quality), 'reel.history': String(initial.preferences.history), 'reel.autoplay': String(initial.preferences.autoplay ?? true), 'reel.markers': String(initial.preferences.markers ?? true), 'reel.autoskip': String(initial.preferences.autoSkip ?? false), 'reel.updates': String(initial.preferences.updates ?? true) });
     let revision = initial.revision ?? 0;
     let savedAccounts = JSON.stringify(initial.savedConnections?.accounts ?? []);
     this.persistence = {
@@ -77,12 +77,12 @@ export class DesktopSession {
       }
     };
   }
-  savePreferences(quality: number, history: boolean, autoplay = true, markers = true, autoSkip = false): Promise<void> {
+  savePreferences(quality: number, history: boolean, autoplay = true, markers = true, autoSkip = false, updates = true): Promise<void> {
     if (this.requiresReopen) return Promise.reject(desktopError('uncertain'));
     if (this.closed) return Promise.reject(desktopError('closing'));
     const operation = this.preferenceQueue.then(async () => {
       if (this.requiresReopen) throw desktopError('uncertain');
-      const result = await this.bridge.savePreferences({ quality, history, autoplay, markers, autoSkip, expectedRevision: this.preferenceRevision });
+      const result = await this.bridge.savePreferences({ quality, history, autoplay, markers, autoSkip, updates, expectedRevision: this.preferenceRevision });
       if (!result.ok) { if (result.code === 'uncertain') this.requiresReopen = true; throw desktopError(result.code); }
       this.preferenceRevision = result.revision;
     });

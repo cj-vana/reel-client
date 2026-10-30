@@ -21,7 +21,10 @@ const original=await readFile(resolve(root,'../web/scripts/fixture-server.mjs'),
 const fixture=original.replace("origin === 'null'","origin === 'null' || origin === 'reel://app'");
 if(fixture===original)throw new Error('Fixture CORS adapter mismatch');
 const fixturePath=resolve(root,'.cache/runtime/fixture-server.mjs');await writeFile(fixturePath,fixture);
-await cp(resolve(root,'../web/scripts/fixture-library.mjs'),resolve(root,'.cache/runtime/fixture-library.mjs'));
+// Copy every module the fixture server imports from its own folder, so a new one cannot be left behind.
+const fixtureModules=[...original.matchAll(/from '\.\/([a-z-]+\.mjs)'/g)].map(match=>match[1]);
+if(!fixtureModules.includes('fixture-library.mjs'))throw new Error('Fixture module list mismatch');
+for(const name of fixtureModules)await cp(resolve(root,'../web/scripts',name),resolve(root,'.cache/runtime',name));
 function start(cmd,args,options={}){const child=spawn(cmd,args,{cwd:root,stdio:['ignore','pipe','pipe'],...options});children.push(child);for(const stream of[child.stdout,child.stderr])stream.on('data',chunk=>logs.push(chunk));return child;}
 async function ready(url,child,port){const end=Date.now()+25000;while(Date.now()<end){try{if(ownsListener(child,port)&&(await fetch(url,{signal:AbortSignal.timeout(500)})).ok)return;}catch(error){if(child.exitCode!==null||child.signalCode!==null||error.message==='The loopback port belongs to another process')throw error;}await new Promise(resolve=>setTimeout(resolve,150));}throw new Error('Owned process readiness timeout');}
 async function check(id,behavior,action){try{await action();outcomes.push({id,behavior,result:'passed'});}catch(error){outcomes.push({id,behavior,result:'blocked',error:String(error)});throw error;}}
