@@ -1,0 +1,438 @@
+name: Release
+
+# Push a version tag such as v0.1.0. The workflow checks that the tag matches the
+# version of every app, runs the tests, and builds each package and the Docker image
+# without publishing anything. Only after every one of those jobs has passed does it
+# open a draft GitHub Release and then push the tested image to GHCR. The draft stays
+# private until you publish it; the image is public as soon as it is pushed.
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  version:
+    name: Tag matches app versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      base: ${{ steps.check.outputs.base }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # npm manifests carry the full version, including any suffix such as -rc.1.
+      # Platform manifests and versions written into the apps carry only MAJOR.MINOR.PATCH,
+      # because webOS, Tizen, Roku and Apple accept nothing else.
+      - id: check
+        name: Check the tag against every app manifest
+        shell: python3 {0}
+        run: |
+          import json, os, re, sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          tag = os.environ["TAG"]
+          match = re.fullmatch(r"v((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?", tag)
+          if not match:
+              sys.exit(f"Tag {tag} is not vMAJOR.MINOR.PATCH with an optional suffix such as -rc.1")
+          version, base, prerelease = tag[1:], match.group(1), bool(match.group(5))
+          problems = []
+
+          def expect(label, actual, wanted):
+              if actual != wanted:
+                  problems.append(f"{label} is {actual!r}, expected {wanted!r}")
+
+          def text(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          for app in ("web", "desktop", "tizen", "roku"):
+              expect(f"apps/{app}/package.json version", json.loads(text(f"apps/{app}/package.json")).get("version"), version)
+              lock = json.loads(text(f"apps/{app}/package-lock.json"))
+              expect(f"apps/{app}/package-lock.json version", lock.get("version"), version)
+              expect(f"apps/{app}/package-lock.json root package version", lock.get("packages", {}).get("", {}).get("version"), version)
+
+          expect("apps/web/webos/appinfo.json version", json.loads(text("apps/web/webos/appinfo.json")).get("version"), base)
+          expect("apps/tizen/src/config.xml widget version", ET.parse("apps/tizen/src/config.xml").getroot().get("version"), base)
+
+          roku = dict(line.split("=", 1) for line in text("apps/roku/channel/manifest").splitlines() if "=" in line)
+          expect("apps/roku/channel/manifest major.minor.build", ".".join(roku.get(key, "?") for key in ("major_version", "minor_version", "build_version")), base)
+
+          for project in ("apps/apple/project.yml", "apps/tvos/project.yml"):
+              source = text(project)
+              marketing = re.findall(r"^\s*MARKETING_VERSION:\s*['\"]?([^'\"\s]+)['\"]?\s*$", source, re.M)
+              builds = re.findall(r"^\s*CURRENT_PROJECT_VERSION:\s*['\"]?([^'\"\s]+)['\"]?\s*$", source, re.M)
+              if not marketing or not builds:
+                  problems.append(f"{project} must set MARKETING_VERSION and CURRENT_PROJECT_VERSION")
+              for value in marketing:
+                  expect(f"{project} MARKETING_VERSION", value, base)
+              for value in builds:
+                  if not value.isdigit() or int(value) < 1:
+                      problems.append(f"{project} CURRENT_PROJECT_VERSION must be a positive whole number, found {value!r}")
+
+          # Versions written straight into source. Each check applies only while the literal exists,
+          # so moving a value into package.json does not break the release.
+          for path, pattern in (
+              ("apps/web/src/api.ts", r"Version=\"(\d+\.\d+\.\d+[^\"]*)\""),
+              ("apps/desktop/scripts/build.mjs", r"version:\s*'(\d+\.\d+\.\d+[^']*)'"),
+              ("apps/desktop/scripts/package.mjs", r"appVersion:\s*'(\d+\.\d+\.\d+[^']*)'"),
+          ):
+              for value in re.findall(pattern, text(path)):
+                  expect(f"{path} app version", value, base)
+
+          if problems:
+              sys.exit(f"Tag {tag} does not match the app versions:\n" + "\n".join("- " + item for item in problems))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\nbase={base}\nprerelease={'true' if prerelease else 'false'}\n")
+          print(f"Tag {tag} matches every app manifest (version {version}, platform version {base}).")
+      - name: Collect the license and third-party notices
+        run: |
+          mkdir -p "$RUNNER_TEMP/notices"
+          cp LICENSE "$RUNNER_TEMP/notices/LICENSE.txt"
+          cp THIRD_PARTY.md "$RUNNER_TEMP/notices/THIRD_PARTY.md"
+          cp apps/web/public/THIRD_PARTY_NOTICES.txt "$RUNNER_TEMP/notices/THIRD_PARTY_NOTICES.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-notices
+          path: ${{ runner.temp }}/notices/*
+          if-no-files-found: error
+
+  source-checks:
+    name: Privacy scan and Python tests
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - run: python scripts/check-public-source.py
+      - run: python scripts/check-doc-links.py
+      - run: python -m unittest discover -s scripts -p 'test_*.py'
+      - run: python -m unittest discover -s apps/web/tests -p '*_test.py'
+
+  web:
+    name: Web app and LG webOS package
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      BASE_VERSION: ${{ needs.version.outputs.base }}
+      REEL_CI_SYNTHETIC: '1'
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:static
+      - run: npm run build
+      - run: node scripts/check-notices.mjs
+      - name: Archive the static site
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          (cd dist && zip -qr "$RUNNER_TEMP/out/reel-web-${TAG}.zip" .)
+      - run: npm run webos:stage
+      - run: npm exec --yes --package=@webos-tools/cli@3.2.6 -- ares-package --no-minify webos-package --outdir .cache/packages
+      - name: Inspect the webOS package
+        run: |
+          shopt -s nullglob
+          packages=(.cache/packages/*.ipk)
+          expected=".cache/packages/app.reelclient.tv_${BASE_VERSION}_all.ipk"
+          [ "${#packages[@]}" -eq 1 ] && [ "${packages[0]}" = "$expected" ] || { echo "Expected only $expected, found: ${packages[*]}" >&2; exit 1; }
+          python3 scripts/inspect-webos.py "$expected"
+          cp "$expected" "$RUNNER_TEMP/out/reel-webos-${TAG}.ipk"
+      - name: Install ffmpeg
+        timeout-minutes: 10
+        run: |
+          for _ in 1 2 3; do
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update &&
+              sudo apt-get -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg lsof && exit 0
+            sleep 15
+          done
+          exit 1
+      - run: node node_modules/playwright/cli.js install --with-deps chrome
+      - run: npm run qa:prepare
+      - name: Browser suite
+        run: node ../../scripts/run-web-browser-suite.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-web
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
+
+  roku:
+    name: Roku package
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      BASE_VERSION: ${{ needs.version.outputs.base }}
+    defaults:
+      run:
+        working-directory: apps/roku
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/roku/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm run package
+      - name: Check the packaged manifest version
+        run: |
+          version=$(unzip -p out/reel-client-roku-sideload.zip manifest | awk -F= '$1=="major_version"{a=$2} $1=="minor_version"{b=$2} $1=="build_version"{c=$2} END{print a"."b"."c}' | tr -d '\r')
+          [ "$version" = "$BASE_VERSION" ] || { echo "Packaged Roku manifest is $version, expected $BASE_VERSION" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/out"
+          cp out/reel-client-roku-sideload.zip "$RUNNER_TEMP/out/reel-roku-${TAG}.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-roku
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop (${{ matrix.label }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: darwin-arm64, label: macos-arm64 }
+          - { os: ubuntu-24.04, target: linux-x64, label: linux-x64 }
+          - { os: windows-latest, target: win32-x64, label: windows-x64 }
+    env:
+      BASE_VERSION: ${{ needs.version.outputs.base }}
+      TARGET: ${{ matrix.target }}
+      LABEL: ${{ matrix.label }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      # Each package is built on its own system, so the runner must be the target.
+      - name: Check the runner matches the package target
+        run: |
+          actual=$(node -p "process.platform + '-' + process.arch")
+          [ "$actual" = "$TARGET" ] || { echo "Runner is $actual, expected $TARGET" >&2; exit 1; }
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run package
+      - name: Check the packaged version
+        run: |
+          staged=$(node -p "require('./.cache/stage/package.json').version")
+          [ "$staged" = "$BASE_VERSION" ] || { echo "Staged app version is $staged, expected $BASE_VERSION" >&2; exit 1; }
+          if [ "$RUNNER_OS" = macOS ]; then
+            bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' ".cache/packages/production/Reel-${TARGET}/Reel.app/Contents/Info.plist")
+            [ "$bundle" = "$BASE_VERSION" ] || { echo "Reel.app version is $bundle, expected $BASE_VERSION" >&2; exit 1; }
+          fi
+      - name: Archive the unsigned app
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cd .cache/packages/production
+          app="Reel-${TARGET}"
+          [ -d "$app" ] || { echo "Missing package folder $app" >&2; exit 1; }
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a -tzip "$RUNNER_TEMP/out/reel-desktop-${LABEL}-${TAG}.zip" "$app"
+          else
+            zip -qry "$RUNNER_TEMP/out/reel-desktop-${LABEL}-${TAG}.zip" "$app"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-desktop-${{ matrix.label }}
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
+
+  docker:
+    name: Docker image (built and tested, not pushed)
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      REPOSITORY: ${{ github.repository }}
+      REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build both architectures into a local archive
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --label org.opencontainers.image.title=Reel \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.revision=${REVISION}" \
+            --label "org.opencontainers.image.source=https://github.com/${REPOSITORY}" \
+            --label org.opencontainers.image.licenses=MIT \
+            --output "type=oci,dest=${RUNNER_TEMP}/reel-image.tar" .
+      # Load each architecture from the archive that will be pushed, and serve it with the
+      # same settings as docker/compose.yml (port 18790 on loopback, read-only, no capabilities).
+      - name: Test each architecture from the archive
+        run: |
+          command -v skopeo >/dev/null || { sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::http::Timeout=30 install -y skopeo; }
+          for arch in amd64 arm64; do
+            skopeo --override-os linux --override-arch "$arch" copy "oci-archive:${RUNNER_TEMP}/reel-image.tar" docker-daemon:reel-client:local
+            [ "$(docker image inspect reel-client:local --format '{{.Os}}/{{.Architecture}}')" = "linux/$arch" ]
+            docker compose -p reel -f docker/compose.yml up --no-build --wait -d
+            python3 docker/verify-http.py
+            docker compose -p reel -f docker/compose.yml down
+            docker image rm reel-client:local
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docker-image
+          path: ${{ runner.temp }}/reel-image.tar
+          if-no-files-found: error
+          retention-days: 5
+
+  release:
+    name: Draft release
+    needs: [version, source-checks, web, roku, desktop, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Check the release files
+        working-directory: dist
+        run: |
+          expected=(
+            "reel-desktop-linux-x64-${TAG}.zip"
+            "reel-desktop-macos-arm64-${TAG}.zip"
+            "reel-desktop-windows-x64-${TAG}.zip"
+            "reel-roku-${TAG}.zip"
+            "reel-web-${TAG}.zip"
+            "reel-webos-${TAG}.ipk"
+            LICENSE.txt
+            THIRD_PARTY.md
+            THIRD_PARTY_NOTICES.txt
+          )
+          diff <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort) <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS" && mv "$RUNNER_TEMP/SHA256SUMS" . && cat SHA256SUMS
+      - name: Write the release notes
+        run: |
+          image="ghcr.io/${GH_REPO,,}:${VERSION}"
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Check each download against SHA256SUMS before you install it. None of these packages is signed with a store or code-signing certificate. See the [installation guide](https://github.com/${GH_REPO}/blob/${TAG}/docs/install/README.md).
+
+          - **Desktop**: unsigned ZIPs for macOS (Apple silicon, not notarized), Windows (x64) and Linux (x64).
+          - **Web**: static files to serve from your own HTTPS host.
+          - **LG webOS**: unsigned IPK for a TV in Developer Mode.
+          - **Roku**: unsigned developer sideload ZIP.
+          - **Docker**: \`${image}\` for linux/amd64 and linux/arm64.
+          - **iPhone, iPad, Apple TV and Samsung**: build from this tag's source and sign with your own account.
+          EOF
+      - name: Create the draft release
+        run: |
+          flags=(--draft --verify-tag --title "Reel ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes)
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}" \
+            "dist/reel-desktop-macos-arm64-${TAG}.zip#Reel for macOS, Apple silicon (unsigned, not notarized)" \
+            "dist/reel-desktop-windows-x64-${TAG}.zip#Reel for Windows x64 (unsigned)" \
+            "dist/reel-desktop-linux-x64-${TAG}.zip#Reel for Linux x64 (unsigned)" \
+            "dist/reel-web-${TAG}.zip#Reel web app, static files" \
+            "dist/reel-webos-${TAG}.ipk#Reel for LG webOS, IPK for Developer Mode (unsigned)" \
+            "dist/reel-roku-${TAG}.zip#Reel for Roku, developer sideload ZIP (unsigned)" \
+            "dist/SHA256SUMS#SHA-256 checksums" \
+            "dist/LICENSE.txt#License" \
+            "dist/THIRD_PARTY.md#Third-party software and assets" \
+            "dist/THIRD_PARTY_NOTICES.txt#Third-party notices in the web, TV and desktop apps"
+
+  publish-image:
+    name: Push the tested Docker image
+    needs: [version, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docker-image
+          path: ${{ runner.temp }}/image
+      - name: Push the archive built and tested above
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          command -v skopeo >/dev/null || { sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::http::Timeout=30 install -y skopeo; }
+          image="ghcr.io/${REPOSITORY,,}"
+          printf '%s' "$REGISTRY_TOKEN" | skopeo login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          skopeo copy --all --digestfile "$RUNNER_TEMP/digest" "oci-archive:${RUNNER_TEMP}/image/reel-image.tar" "docker://${image}:${VERSION}"
+          if [ "$PRERELEASE" != true ]; then
+            skopeo copy --all "docker://${image}:${VERSION}" "docker://${image}:latest"
+          fi
+          echo "Pushed ${image}:${VERSION} at $(cat "$RUNNER_TEMP/digest")" | tee -a "$GITHUB_STEP_SUMMARY"

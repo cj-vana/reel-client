@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="urn:reelclient:tizen" version="0.1.0" width="1920" height="1080" viewmodes="fullscreen">
+  <tizen:application id="ReelClient.Reel" package="ReelClient" required_version="7.0"/>
+  <tizen:profile name="tv-samsung"/>
+  <name>Reel</name>
+  <content src="launch.html"/>
+  <icon src="largeIcon.png"/>
+  <access origin="*" subdomains="true"/>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+  <tizen:content-security-policy>default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src http: https: blob:; connect-src 'self' http: https:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'</tizen:content-security-policy>
+</widget>

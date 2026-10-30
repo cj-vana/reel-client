@@ -1,0 +1,58 @@
+/* Design tokens. Content supplies the color; the interface stays neutral with one mint accent. */
+:root {
+  --canvas: #0c0c0e;
+  --raised: #17171a;
+  --raised-2: #222226;
+  --raised-3: #2d2d32;
+  --hairline: #ffffff14;
+  --hairline-strong: #ffffff26;
+  --text: #f4f4f6;
+  --text-2: #f4f4f6a3;
+  --text-3: #f4f4f670;
+  --accent: #96e8cf;
+  --on-accent: #0b1a14;
+  --primary: #f4f4f6;
+  --on-primary: #111114;
+  --translucent: #f4f4f61f;
+  --translucent-hover: #f4f4f633;
+  --warning: #f2c98a;
+  --warning-surface: #2a2216;
+  --danger: #ffb3a7;
+
+  --radius-art: 10px;
+  --radius-control: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --fast: 160ms;
+  --medium: 240ms;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --gutter: 40px;
+  --rail: 248px;
+  --rail-compact: 76px;
+  --tabbar: 64px;
+  --poster: 168px;
+  --landscape: 296px;
+  --row-gap: 16px;
+
+  color-scheme: dark;
+}
+
+@media (min-width: 1600px) {
+  :root { --gutter: 56px; --poster: 192px; --landscape: 336px; --row-gap: 20px; }
+}
+/* Large desktop monitors (2560 and up): text, art and margins take one more step so the layout fills the
+   window instead of reading as a 1440 layout in a corner. TV layouts never reach this width. */
+@media (min-width: 2200px) {
+  :root { --gutter: 72px; --rail: 280px; --poster: 216px; --landscape: 384px; --row-gap: 24px; }
+  html:not([data-layout="tv"]) { font-size: 112.5%; }
+}
+@media (max-width: 1199px) {
+  :root { --gutter: 28px; --poster: 150px; --landscape: 264px; }
+}
+@media (max-width: 767px) {
+  :root { --gutter: 16px; --row-gap: 12px; }
+}

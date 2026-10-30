@@ -1,0 +1,87 @@
+name: ReelTV
+options:
+  deploymentTarget:
+    tvOS: '27.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    TARGETED_DEVICE_FAMILY: '3'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: 27
+    CODE_SIGN_STYLE: Automatic
+    REEL_CREDENTIAL_NAMESPACE: $(PRODUCT_BUNDLE_IDENTIFIER)
+targets:
+  ReelTV:
+    type: application
+    platform: tvOS
+    sources:
+      - ReelTV
+      - ../apple/Reel/Core/PlaybackAudioSelection.swift
+      - ../apple/Reel/Core/MediaCapabilities.swift
+      - ../apple/Reel/Core/Models.swift
+      - ../apple/Reel/Core/WatchedMutation.swift
+      - ../apple/Reel/Core/LibraryQuery.swift
+      - ../apple/Reel/Core/BrowsePreferences.swift
+      - ../apple/Reel/Core/RemovedBrowsePreferencesCleanup.swift
+      - ../apple/Reel/Core/JellyfinAPI.swift
+      - ../apple/Reel/Core/ServerConnections.swift
+      - ../apple/Reel/Core/Session.swift
+      - ../apple/Reel/Core/Artwork.swift
+      - ../apple/Reel/Core/PlaybackController.swift
+      - ../apple/Reel/Core/PlaybackGateway.swift
+      - ../apple/Reel/Core/PlaybackExtras.swift
+      - ../apple/Reel/Core/Seerr.swift
+      - ../apple/Reel/Core/ServerPreferences.swift
+    info:
+      path: ReelTV/Info.plist
+      properties:
+        CFBundleDisplayName: Reel
+        ReelCredentialNamespace: $(REEL_CREDENTIAL_NAMESPACE)
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        NSLocalNetworkUsageDescription: Reel connects to the Jellyfin server you choose to browse and play your library.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: ReelTV
+        TARGETED_DEVICE_FAMILY: '3'
+        GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: BrandAssets
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.tv.qa
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.tv
+  ReelTVTests:
+    type: bundle.unit-test
+    platform: tvOS
+    sources: [TestSupport, ReelTVTests, ../apple/ReelTests/AudioSelectionTests.swift]
+    dependencies: [{target: ReelTV}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TARGETED_DEVICE_FAMILY: '3'
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.tv.qa.tests
+  ReelTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources: [TestSupport, ReelTVUITests]
+    dependencies: [{target: ReelTV}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TARGETED_DEVICE_FAMILY: '3'
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.tv.qa.uitests
+schemes:
+  ReelTV:
+    build:
+      targets:
+        ReelTV: all
+    test:
+      targets: [ReelTVTests, ReelTVUITests]
+      gatherCoverageData: true

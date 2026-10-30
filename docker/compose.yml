@@ -1,0 +1,19 @@
+name: reel-client
+services:
+  web:
+    image: reel-client:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    user: "101:101"
+    ports:
+      - "127.0.0.1:18790:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,uid=101,gid=101,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    restart: unless-stopped

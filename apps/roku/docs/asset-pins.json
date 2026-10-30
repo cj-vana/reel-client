@@ -1,0 +1,29 @@
+{
+  "attribution": "Original Reel Client artwork, MIT. Copies of the PNG files in branding/.",
+  "files": [
+    {
+      "sourceRepositoryPath": "branding/reelclient-app-icon-256.png",
+      "candidatePath": "assets/app-icon-original.png",
+      "sha256": "e3a141127b79a8a84445a3b9b925ea1405b4d1453c6ea896475995f68c8d64d4",
+      "sourceUnchangedBeforeAfter": true
+    },
+    {
+      "sourceRepositoryPath": "branding/reelclient-mark-transparent-256.png",
+      "candidatePath": "channel/images/mark.png",
+      "sha256": "1d1ba9b62179fa321b37cd25ae2b2386680e883c568cadb5bf18f6b6e1990836",
+      "sourceUnchangedBeforeAfter": true
+    },
+    {
+      "sourceRepositoryPath": "LICENSE",
+      "candidatePath": "channel/LICENSE",
+      "sha256": "d5249d47e250f941074c02701f211e50153ba9eec6013bfb2528ad7d119baf9b",
+      "sourceUnchangedBeforeAfter": true
+    },
+    {
+      "sourceRepositoryPath": "branding/reelclient-mark-transparent-128.png",
+      "candidatePath": "assets/mark-128.png",
+      "sha256": "6a5285e131181bbe7229d53693a3d7b55a405f18c20a229a293c77a2a2fb63e3",
+      "sourceUnchangedBeforeAfter": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+node_modules/
+.cache/
+dist/
+out/
+build/
+.buildResult/
+evidence/
+__pycache__/
+*.pyc
+*.wgt
+*.zip
+*.p12
+*.pfx
+*.pem
+profiles/

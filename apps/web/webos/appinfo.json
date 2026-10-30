@@ -1,0 +1,15 @@
+{
+  "id": "app.reelclient.tv",
+  "version": "0.1.0",
+  "vendor": "Reel contributors",
+  "type": "web",
+  "main": "index.html",
+  "title": "Reel",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "resolution": "1920x1080",
+  "bgColor": "#0c0c0e",
+  "requiredMemory": 64,
+  "requiredACG": [],
+  "disableBackHistoryAPI": true
+}

@@ -1,0 +1,81 @@
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.pfx
+*.pem
+*.mobileprovision
+*.local.xcconfig
+
+# Dependencies
+node_modules/
+
+# Build and package output
+dist/
+dist-tv/
+build/
+build-*/
+out/
+release/
+webos-package/
+.cache/
+.buildResult/
+*.ipk
+*.wgt
+*.zip
+*.dmg
+*.asar
+
+# Apple build output and user data
+DerivedData/
+*.xcresult/
+*.xcarchive/
+*.ipa
+*.xcuserstate
+xcuserdata/
+# XcodeGen writes these projects. The one tracked file inside is the iOS app's Package.resolved,
+# which pins its Swift packages; after changing a package, stage it with `git add -f`.
+apps/tvos/*.xcodeproj/
+apps/apple/*.xcodeproj/
+apps/apple/qa/layout-probe/*.xcodeproj/
+
+# Test and tool output
+test-results/
+playwright-report/
+.playwright-mcp/
+artifacts/
+evidence/
+coverage/
+
+# Python caches and environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs and TypeScript build info
+*.log
+*.tsbuildinfo
+
+# Local tool folders
+.claude/
+.codex/
+.planning/
+.forge/
+progress.txt
+
+# Generated synthetic fixtures
+apps/apple/qa/artwork/
+apps/apple/qa/hls/
+apps/apple/qa/hub-assets/
+apps/apple/qa/sample.mp4
+tests/interpreter-root/

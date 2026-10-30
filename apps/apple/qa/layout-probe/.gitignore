@@ -1,0 +1,7 @@
+*.xcodeproj/
+ProbeInfo.plist
+build/
+SourcePackages/
+.swiftpm/
+*.xcresult/
+*.log

@@ -1,0 +1,57 @@
+/* Samsung TV adapter surfaces: the exit confirmation and the platform status line. Tokens come from reel.css. */
+.tizen-exit {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: #0c0c0ee0;
+}
+.tizen-exit-panel {
+  width: min(780px, 90vw);
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  scroll-padding: 16px;
+  padding: 36px;
+  border: 1px solid var(--hairline-strong, #ffffff26);
+  border-radius: 20px;
+  background: var(--raised, #17171a);
+  box-shadow: 0 20px 70px #0c0c0ecc;
+}
+.tizen-exit-panel h2 { margin: 10px 0 18px; font-size: 1.8rem; line-height: 1.1; letter-spacing: -.03em; }
+.tizen-exit-panel p { color: var(--text-2, #f4f4f6a3); font-size: .9rem; line-height: 1.6; }
+.tizen-exit-actions { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 28px; }
+.tizen-exit-actions button { min-width: 180px; min-height: 60px; scroll-margin: 16px; }
+.tizen-exit-error { min-height: 1.6em; margin-top: 12px; color: var(--danger, #ffb3a7) !important; }
+.tizen-status {
+  position: fixed;
+  z-index: 110;
+  bottom: 28px;
+  left: 50%;
+  max-width: min(760px, 85vw);
+  padding: 18px 26px;
+  border: 1px solid var(--hairline-strong, #ffffff26);
+  border-radius: 12px;
+  background: var(--raised-2, #222226);
+  color: var(--text, #f4f4f6);
+  font-size: .85rem;
+  line-height: 1.5;
+  box-shadow: 0 12px 40px #0c0c0ecc;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+#player .tizen-status {
+  top: 108px;
+  bottom: auto;
+  left: 40px;
+  max-width: min(760px, calc(100vw - 80px));
+  transform: none;
+}
+#player-format:not([hidden]) ~ .tizen-status {
+  top: auto;
+  bottom: 28px;
+  left: 24px;
+  max-width: calc(100vw - 680px);
+}

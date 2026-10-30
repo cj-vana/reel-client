@@ -1,0 +1,31 @@
+{
+  "name": "@reelclient/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "check:static": "node scripts/run-static-checks.mjs",
+    "test": "node scripts/run-unit-checks.mjs",
+    "test:browser": "node scripts/run-browser-checks.mjs",
+    "qa:prepare": "node scripts/prepare-fixtures.mjs",
+    "qa:prepare-demo": "node scripts/prepare-fixtures.mjs --demo",
+    "qa:serve": "node scripts/fixture-server.mjs",
+    "qa:demo": "node scripts/fixture-server.mjs --demo",
+    "preview": "vite preview --host 127.0.0.1",
+    "webos:stage": "node scripts/stage-webos.mjs"
+  },
+  "dependencies": {
+    "hls.js": "1.7.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

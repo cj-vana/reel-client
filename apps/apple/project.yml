@@ -1,0 +1,85 @@
+name: Reel
+options:
+  bundleIdPrefix: app.reelclient
+  deploymentTarget:
+    iOS: '27.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    TARGETED_DEVICE_FAMILY: '1,2'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: 27
+    CODE_SIGN_STYLE: Automatic
+    REEL_CREDENTIAL_NAMESPACE: $(PRODUCT_BUNDLE_IDENTIFIER)
+packages:
+  GoogleCast:
+    url: https://github.com/googlecast/google-cast-ios-sdk
+    exactVersion: 4.8.6
+targets:
+  Reel:
+    type: application
+    platform: iOS
+    sources: [Reel]
+    dependencies:
+      - package: GoogleCast
+        product: GoogleCastDynamic
+    info:
+      path: Reel/Info.plist
+      properties:
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        CFBundleDisplayName: Reel
+        ReelCredentialNamespace: $(REEL_CREDENTIAL_NAMESPACE)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSBonjourServices: ['_googlecast._tcp', '_CC1AD845._googlecast._tcp']
+        NSLocalNetworkUsageDescription: Reel connects to your Jellyfin server to browse and play your library.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        UIBackgroundModes: [audio]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.ios
+        TARGETED_DEVICE_FAMILY: '1,2'
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MACCATALYST: false
+  ReelTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [ReelTests]
+    dependencies: [{target: Reel}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.ios.tests
+  ReelUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [ReelUITests]
+    dependencies: [{target: Reel}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.ios.uitests
+schemes:
+  Reel:
+    build:
+      targets:
+        Reel: all
+    test:
+      targets: [ReelTests, ReelUITests]
+      gatherCoverageData: true

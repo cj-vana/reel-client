@@ -1,0 +1,65 @@
+name: ReelLayoutProbe
+options:
+  bundleIdPrefix: app.reelclient
+  deploymentTarget:
+    iOS: '27.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    TARGETED_DEVICE_FAMILY: '2'
+    SUPPORTED_PLATFORMS: iphonesimulator
+    SUPPORTS_MACCATALYST: false
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+packages:
+  GoogleCast:
+    url: https://github.com/googlecast/google-cast-ios-sdk
+    exactVersion: 4.8.6
+targets:
+  ReelWidthProbe:
+    type: application
+    platform: iOS
+    sources:
+      - path: ../../Reel
+        excludes:
+          - ReelApp.swift
+          - Info.plist
+      - ProbeApp.swift
+    dependencies:
+      - package: GoogleCast
+        product: GoogleCastDynamic
+    info:
+      path: ProbeInfo.plist
+      properties:
+        CFBundleDisplayName: Layout Probe
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.probe
+        TARGETED_DEVICE_FAMILY: '2'
+  WidthFocusTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies: [{target: ReelWidthProbe}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: app.reelclient.probe.tests
+        TARGETED_DEVICE_FAMILY: '2'
+schemes:
+  ReelLayoutProbe:
+    build:
+      targets:
+        ReelWidthProbe: all
+    test:
+      targets: [WidthFocusTests]
+      gatherCoverageData: false

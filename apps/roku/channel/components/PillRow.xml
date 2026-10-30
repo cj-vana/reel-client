@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A horizontal row of labelled pills: the top tabs, the Details actions and Skip Intro. -->
+<component name="PillRow" extends="Group">
+  <interface>
+    <field id="labels" type="array" onChange="rebuild" />
+    <field id="style" type="string" value="buttons" onChange="rebuild" />
+    <field id="selectedIndex" type="integer" value="-1" onChange="render" />
+    <field id="focusIndex" type="integer" value="0" onChange="render" />
+    <field id="focused" type="boolean" value="false" onChange="render" />
+    <field id="itemSelected" type="integer" value="-1" alwaysNotify="true" />
+    <field id="rowWidth" type="float" value="0" />
+    <field id="rowHeight" type="float" value="0" />
+  </interface>
+  <script type="text/brightscript" uri="PillRow.brs" />
+  <children>
+    <Poster id="track" uri="pkg:/images/fill-pill.9.png" visible="false" />
+    <Group id="items" />
+    <Rectangle id="indicator" width="30" height="3" color="0x96E8CFFF" visible="false" />
+  </children>
+</component>

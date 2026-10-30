@@ -1,0 +1,81 @@
+{
+  "tool": "Pillow 12.3.0",
+  "purpose": "Roku manifest canvases generated from the Reel logo",
+  "files": [
+    {
+      "path": "channel/images/channel-icon-hd.png",
+      "size": [
+        290,
+        218
+      ],
+      "sha256": "d7434707f29f0e545729c8e11371a77acab9663c890c7ade29bd84f44383e595",
+      "source": "assets/mark-128.png",
+      "sourceSha256": "6a5285e131181bbe7229d53693a3d7b55a405f18c20a229a293c77a2a2fb63e3",
+      "sourceSize": [
+        128,
+        128
+      ],
+      "offset": [
+        81,
+        45
+      ],
+      "rescaled": false,
+      "backgroundRGB": [
+        12,
+        12,
+        14
+      ],
+      "sourceUnchanged": true
+    },
+    {
+      "path": "channel/images/channel-icon-fhd.png",
+      "size": [
+        540,
+        405
+      ],
+      "sha256": "2c37d92a52e43ba61183bac66553fb8b4008e8a28ee68c98af5c88340ac9cea6",
+      "source": "channel/images/mark.png",
+      "sourceSha256": "1d1ba9b62179fa321b37cd25ae2b2386680e883c568cadb5bf18f6b6e1990836",
+      "sourceSize": [
+        256,
+        256
+      ],
+      "offset": [
+        142,
+        74
+      ],
+      "rescaled": false,
+      "backgroundRGB": [
+        12,
+        12,
+        14
+      ],
+      "sourceUnchanged": true
+    },
+    {
+      "path": "channel/images/splash-hd.png",
+      "size": [
+        1280,
+        720
+      ],
+      "sha256": "062a024f85bec5a1ea9b0e9ccd135f861463d33c714ca57c0989242994bf5199",
+      "source": "channel/images/mark.png",
+      "sourceSha256": "1d1ba9b62179fa321b37cd25ae2b2386680e883c568cadb5bf18f6b6e1990836",
+      "sourceSize": [
+        256,
+        256
+      ],
+      "offset": [
+        512,
+        232
+      ],
+      "rescaled": false,
+      "backgroundRGB": [
+        12,
+        12,
+        14
+      ],
+      "sourceUnchanged": true
+    }
+  ]
+}

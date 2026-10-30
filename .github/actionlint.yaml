@@ -1,0 +1,6 @@
+# The iOS and tvOS jobs run on the xcode-27 runner label, which older
+# actionlint releases do not know. This only tells the linter to accept it.
+# Replace the label in verify.yml and here if your runners use another name.
+self-hosted-runner:
+  labels:
+    - xcode-27

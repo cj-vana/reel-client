@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A title's facts on one line: plain text, boxed badges (rating, 5.1, CC) and the star score. -->
+<component name="MetaRow" extends="Group">
+  <interface>
+    <field id="parts" type="array" onChange="rebuild" />
+    <field id="rowWidth" type="float" value="0" />
+  </interface>
+  <script type="text/brightscript" uri="MetaRow.brs" />
+</component>

@@ -1,0 +1,12 @@
+{
+  "version": "45.0.0",
+  "source": "https://github.com/electron/electron/releases/download/v45.0.0/SHASUMS256.txt",
+  "sha256": {
+    "darwin-arm64": "896c3a50b148e89a158dca08a6996a022ddf39b23aac871e107f5b4087f8caa9",
+    "darwin-x64": "7877c282e74a52f8d87949536a25735cf9982de1265b544c9cd258dd14eff4de",
+    "linux-arm64": "a80d92b1ad6c111545a12632b8a75cedce614a41866e500810d4050d947f90e9",
+    "linux-x64": "22f6a10bd3f7fef987ddbb379d3375ce664ad0c98a9a50f80c89f1718a0c3e3a",
+    "win32-arm64": "fbae273960b24b81ab7a5cdcf34dd83a8781ee6799ccc621c1d85d5ce197252d",
+    "win32-x64": "ae53887a23bb640369c93dbd38c408a2af5c0deb86f2fa76c6c244cb444b7f47"
+  }
+}

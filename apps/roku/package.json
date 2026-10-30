@@ -1,0 +1,17 @@
+{
+  "name": "reel-native-roku-candidate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bsc --project bsconfig.json && python3 scripts/check-package.py",
+    "test": "node scripts/test-runtime.mjs && node scripts/test-episode-scene.mjs && python3 -B scripts/test-layout.py",
+    "test:layout": "python3 -B scripts/test-layout.py",
+    "package": "python3 scripts/package.py",
+    "test:scene": "node scripts/test-episode-scene.mjs"
+  },
+  "devDependencies": {
+    "brighterscript": "0.73.8",
+    "brs": "0.45.0"
+  }
+}

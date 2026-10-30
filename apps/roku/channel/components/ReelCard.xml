@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="ReelCard" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="width" type="float" onChange="layout" />
+    <field id="height" type="float" onChange="layout" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="rowFocusPercent" type="float" onChange="onFocus" />
+    <field id="rowListHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/Core.brs" />
+  <script type="text/brightscript" uri="ReelCard.brs" />
+  <children>
+    <Poster id="shadow" uri="pkg:/images/shadow-card.9.png" opacity="0" />
+    <Rectangle id="base" color="0x222226FF" />
+    <Label id="fallback" wrap="true" numLines="4" font="font:SmallBoldSystemFont" color="0xF4F4F6FF" />
+    <Poster id="poster" loadDisplayMode="scaleToZoom" />
+    <Rectangle id="progressTrack" color="0xFFFFFF47" visible="false" />
+    <Rectangle id="progressFill" color="0x96E8CFFF" visible="false" />
+    <Poster id="watched" uri="pkg:/images/watched.png" width="36" height="36" visible="false" />
+    <Poster id="ring" uri="pkg:/images/ring-card.9.png" opacity="0" blendColor="0xF4F4F6FF" />
+    <Label id="caption" opacity="0" color="0xF4F4F6FF" vertAlign="top">
+      <Font role="font" uri="font:BoldSystemFontFile" size="24" />
+    </Label>
+    <Label id="subtitle" opacity="0" color="0xF4F4F6A3" vertAlign="top">
+      <Font role="font" uri="font:SystemFontFile" size="24" />
+    </Label>
+  </children>
+</component>

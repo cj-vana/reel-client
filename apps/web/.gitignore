@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-tv/
+webos-package/
+*.ipk
+.cache/
+test-results/
+playwright-report/
+.env*
+!.env.example
+__pycache__/
+*.pyc

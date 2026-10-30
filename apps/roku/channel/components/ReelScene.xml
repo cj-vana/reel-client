@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="ReelScene" extends="Scene">
+  <interface><field id="closeRequested" type="boolean" value="false" /></interface>
+  <script type="text/brightscript" uri="pkg:/source/Core.brs" />
+  <script type="text/brightscript" uri="pkg:/source/Format.brs" />
+  <script type="text/brightscript" uri="pkg:/source/EpisodePlayback.brs" />
+  <script type="text/brightscript" uri="ReelScene.brs" />
+  <children>
+    <Rectangle width="1920" height="1080" color="0x0C0C0EFF" />
+    <Poster id="backdropBack" width="1920" height="1080" loadDisplayMode="scaleToZoom" />
+    <Poster id="backdropFront" width="1920" height="1080" loadDisplayMode="scaleToZoom" opacity="0" />
+    <Poster id="scrimLeft" uri="pkg:/images/scrim-left.png" translation="[0,0]" width="1320" height="1080" />
+    <Poster id="scrimTop" uri="pkg:/images/scrim-top.png" translation="[0,0]" width="1920" height="220" />
+    <Poster id="scrimBottom" uri="pkg:/images/scrim-bottom.png" translation="[0,420]" width="1920" height="660" />
+    <!-- The mint mark's ink starts 9 px inside the 48 px image, so the image sits at x 87 to put the ink on the 96 px edge. -->
+    <Poster id="brand" uri="pkg:/images/mark.png" translation="[87,68]" width="48" height="48" loadDisplayMode="scaleToFit" />
+    <Label id="wordmark" text="Reel" translation="[136,72]" width="120" height="40" vertAlign="center" color="0xF4F4F6FF">
+      <Font role="font" uri="font:BoldSystemFontFile" size="32" />
+    </Label>
+    <PillRow id="nav" style="tabs" translation="[537,56]" />
+    <!-- The viewer and server share one line, centred on the tab bar; Options is a quiet capsule at the edge. -->
+    <Label id="accountLabel" translation="[1400,72]" width="424" height="40" horizAlign="right" vertAlign="center" color="0xF4F4F6A3">
+      <Font role="font" uri="font:SystemFontFile" size="24" />
+    </Label>
+    <Group id="options" translation="[1664,62]" visible="false">
+      <Poster id="optionsFill" uri="pkg:/images/fill-pill.9.png" width="160" height="60" blendColor="0xFFFFFF1F" />
+      <Label id="hint" width="160" height="60" horizAlign="center" vertAlign="center" color="0xF4F4F6C8">
+        <Font role="font" uri="font:SystemFontFile" size="24" />
+      </Label>
+    </Group>
+    <Label id="status" translation="[96,136]" width="1100" height="34" color="0xF4F4F6A3">
+      <Font role="font" uri="font:SystemFontFile" size="24" />
+    </Label>
+    <Label id="genres" translation="[96,176]" width="1120" height="32" color="0xF4F4F6A3">
+      <Font role="font" uri="font:SystemFontFile" size="24" />
+    </Label>
+    <Label id="title" translation="[96,208]" width="1120" height="80" numLines="1" color="0xF4F4F6FF">
+      <Font role="font" uri="font:BoldSystemFontFile" size="64" />
+    </Label>
+    <Label id="meta" translation="[96,296]" width="1120" height="36" color="0xF4F4F6A3">
+      <Font role="font" uri="font:SystemFontFile" size="26" />
+    </Label>
+    <!-- A title's facts with the boxed rating and star score; the plain meta line above is for screen notes. -->
+    <MetaRow id="metaRow" translation="[96,296]" visible="false" />
+    <Label id="description" translation="[96,416]" width="960" height="108" numLines="3" wrap="true" lineSpacing="6" color="0xF4F4F6C8">
+      <Font role="font" uri="font:SystemFontFile" size="26" />
+    </Label>
+    <!-- The bare magnifying glass above the Search empty state, centred over the message column. -->
+    <Poster id="searchIcon" uri="pkg:/images/search.png" translation="[928,304]" width="64" height="64" blendColor="0xF4F4F6A3" visible="false" />
+    <PillRow id="buttons" style="buttons" translation="[96,544]" visible="false" />
+    <RowList id="rows" translation="[96,520]" itemComponentName="ReelCard" itemSize="[1728,288]" rowItemSize="[[384,216]]" rowItemSpacing="[[32,0]]" showRowLabel="[true]" rowLabelOffset="[[0,32]]" rowLabelColor="0xF4F4F6FF" numRows="2" focusXOffset="[0]" rowFocusAnimationStyle="floatingFocus">
+      <Font role="rowLabelFont" uri="font:BoldSystemFontFile" size="32" />
+    </RowList>
+    <LabelList id="actions" translation="[96,392]" itemSize="[960,72]" itemSpacing="[0,8]" numRows="8" color="0xF4F4F6C8" focusedColor="0x0C0C0EFF" focusBitmapUri="pkg:/images/fill-12.9.png" focusBitmapBlendColor="0xF4F4F6FF" textHorizOffset="28" visible="false" />
+    <Label id="storageNotice" translation="[96,984]" width="1728" height="34" color="0xF1CA8DFF">
+      <Font role="font" uri="font:SystemFontFile" size="24" />
+    </Label>
+    <Animation id="backdropFade" duration="0.3" easeFunction="outQuad">
+      <FloatFieldInterpolator id="backdropFadeValue" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="backdropFront.opacity" />
+    </Animation>
+    <Timer id="backdropTimer" duration="0.25" repeat="false" />
+    <Timer id="reportTimer" duration="10" repeat="true" />
+    <Timer id="stopTimer" duration="10" repeat="false" />
+    <Timer id="nextEpisodeTimer" duration="1" repeat="true" />
+    <Video asyncStopSemantics="true" id="video" width="1920" height="1080" visible="false" notificationInterval="1" />
+    <Group id="episodePanel" visible="false">
+      <Rectangle width="1920" height="1080" color="0x0C0C0EF2" />
+      <Label id="episodePanelTitle" translation="[240,120]" width="1440" height="72" color="0xF4F4F6FF">
+        <Font role="font" uri="font:BoldSystemFontFile" size="48" />
+      </Label>
+      <Label id="episodePanelMessage" translation="[240,204]" width="1440" height="80" numLines="2" wrap="true" color="0xF4F4F6A3">
+        <Font role="font" uri="font:SystemFontFile" size="28" />
+      </Label>
+      <LabelList id="episodeChoices" translation="[240,312]" itemSize="[1200,72]" itemSpacing="[0,8]" numRows="8" color="0xF4F4F6C8" focusedColor="0x0C0C0EFF" focusBitmapUri="pkg:/images/fill-12.9.png" focusBitmapBlendColor="0xF4F4F6FF" textHorizOffset="28" />
+      <Label text="Back to return" translation="[240,978]" width="1440" height="32" color="0xF4F4F670">
+        <Font role="font" uri="font:SystemFontFile" size="24" />
+      </Label>
+    </Group>
+  </children>
+</component>

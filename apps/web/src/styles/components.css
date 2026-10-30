@@ -1,0 +1,581 @@
+/* Buttons. Primary is an off-white fill; everything else is a translucent raised fill. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--radius-control);
+  background: var(--raised-2);
+  color: var(--text);
+  font-size: .9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: center;
+  transition: transform var(--fast) var(--ease);
+}
+.button svg { width: 18px; height: 18px; }
+.button.primary { background: var(--primary); color: var(--on-primary); }
+.button.primary svg { fill: currentColor; stroke-width: 0; }
+.button.glass {
+  background: var(--translucent);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+.button.quiet { background: var(--raised-2); }
+.button:active:not(:disabled) { transform: scale(.97); }
+
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.icon-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--text);
+}
+.icon-button > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (hover: hover) {
+  .button:hover:not(:disabled) { background: var(--raised-3); }
+  .button.primary:hover:not(:disabled) { background: #ffffff; }
+  .button.glass:hover:not(:disabled) { background: var(--translucent-hover); }
+  .text-button:hover:not(:disabled) { color: var(--text); }
+  .icon-button:hover:not(:disabled) { background: var(--translucent); }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Chips and segmented choices are fully round. */
+.home-category,
+.browse-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: var(--raised-2);
+  color: var(--text);
+  font-size: .875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.home-category svg { width: 16px; height: 16px; }
+/* A selected choice is a lighter neutral fill with full-strength text; the accent marks state only. */
+.browse-category { color: var(--text-2); }
+.browse-category.is-current,
+.browse-category[aria-pressed="true"] { background: var(--translucent-hover); color: var(--text); }
+@media (hover: hover) {
+  .home-category:hover,
+  .browse-category:not(.is-current):not([aria-pressed="true"]):hover { background: var(--raised-3); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .home-category,
+  .browse-category { min-height: 44px; }
+}
+
+.eyebrow {
+  display: inline-block;
+  color: var(--text-2);
+  font-size: .8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--raised-3);
+  color: var(--text);
+  font-size: .8125rem;
+  font-weight: 700;
+}
+
+/* Artwork. Ratios use padding so Chromium 87 TV engines lay them out without aspect-ratio. */
+.artwork {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius-art);
+  background: var(--raised);
+}
+.artwork::before { content: ""; display: block; padding-top: 150%; }
+.artwork img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--medium) var(--ease);
+}
+.artwork img.loaded { opacity: 1; }
+.art-placeholder {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+.art-placeholder svg { width: 32px; height: 32px; }
+
+/* Cards. The artwork carries play, progress and favorite marks; the title sits underneath. */
+.media-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: var(--poster);
+  min-width: 0;
+  padding: 0;
+  border-radius: var(--radius-art);
+  color: var(--text);
+  text-align: left;
+}
+.media-card.wide-card { width: var(--landscape); }
+.wide-card .artwork::before { padding-top: 56.25%; }
+.card-art {
+  position: relative;
+  display: block;
+  margin-bottom: 10px;
+  border-radius: var(--radius-art);
+  transition: transform var(--medium) var(--ease);
+}
+.card-art .artwork { box-shadow: 0 0 0 1px var(--hairline) inset; }
+.media-card strong,
+.media-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.media-card strong { font-size: .9375rem; font-weight: 600; line-height: 1.3; }
+.media-card small { margin-top: 2px; color: var(--text-2); font-size: .8125rem; line-height: 1.35; }
+.media-card:focus-visible { outline: none; }
+.media-card:focus-visible .card-art,
+.media-card.browse-card:focus-visible .artwork {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+.card-play {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  opacity: 0;
+  transform: scale(.9);
+  transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.card-play svg { width: 16px; height: 16px; fill: currentColor; stroke-width: 0; margin-left: 2px; }
+.progress-track {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #f4f4f640;
+}
+.progress-track > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.wide-card .card-play { left: auto; right: 12px; bottom: 22px; }
+.favorite-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0c0c0eb3;
+  color: var(--text);
+}
+.favorite-mark svg { width: 14px; height: 14px; fill: currentColor; }
+@media (hover: hover) {
+  .media-card:hover .card-art { transform: translateY(-4px); }
+  .media-card:hover .card-play,
+  .media-card:focus-visible .card-play { opacity: 1; transform: none; }
+}
+
+/* Rows scroll horizontally with a stable left edge. */
+.shelf { margin-top: 40px; }
+.shelf > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+  padding: 0 var(--gutter);
+}
+.shelf h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.015em; }
+.shelf > header .text-button { margin-left: -6px; }
+.shelf > header h2 + .text-button { margin-left: auto; }
+.shelf > header .episode-refresh { margin: 0 -10px 0 -4px; color: var(--text-2); }
+.episode-refresh svg { width: 18px; height: 18px; }
+@media (hover: hover) {
+  .shelf > header .episode-refresh:hover:not([aria-disabled="true"]) { color: var(--text); }
+}
+.shelf-track {
+  display: flex;
+  gap: var(--row-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px var(--gutter) 10px;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.shelf-track::-webkit-scrollbar { display: none; }
+.shelf-track > * { scroll-snap-align: start; }
+@media (pointer: coarse) {
+  .shelf-track { scroll-snap-type: x mandatory; }
+}
+.episode-status {
+  min-height: 1.4em;
+  margin: 0 var(--gutter) 4px;
+  color: var(--text-2);
+  font-size: .8125rem;
+}
+.episode-status:empty { display: none; }
+[data-episode-slot] [aria-disabled="true"] { opacity: .6; cursor: progress; }
+
+/* Loading placeholders keep the final layout's shape. */
+.skeleton,
+.episode-skeleton .artwork,
+.episode-skeleton strong,
+.episode-skeleton small {
+  background: var(--raised);
+  color: transparent;
+  animation: skeleton-pulse 1.6s var(--ease) infinite alternate;
+}
+.episode-skeleton strong,
+.episode-skeleton small { width: 70%; border-radius: 6px; }
+.episode-skeleton small { width: 45%; }
+.skeleton { display: block; border-radius: var(--radius-art); }
+@keyframes skeleton-pulse { from { opacity: .55; } to { opacity: 1; } }
+
+.loading-page { padding: 0 0 48px; }
+.loading-page .skeleton-hero { height: min(62vh, 620px); border-radius: 0; }
+.loading-page .skeleton-heading { width: 220px; height: 34px; margin: 48px var(--gutter) 20px; border-radius: 8px; }
+.loading-page .skeleton-row {
+  display: flex;
+  gap: var(--row-gap);
+  overflow: hidden;
+  padding: 0 var(--gutter);
+}
+.loading-page .skeleton-row .skeleton {
+  flex: 0 0 auto;
+  width: var(--poster);
+  height: calc(var(--poster) * 1.5);
+}
+.loading-page .skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 28px var(--row-gap);
+  padding: 0 var(--gutter);
+}
+.loading-page .skeleton-grid .skeleton { height: 0; padding-top: 150%; }
+/* On a phone the Home feature is a card, so its placeholder is one too. */
+@media (max-width: 767px) {
+  html:not([data-layout="tv"]) .loading-page .skeleton-feature { height: clamp(320px, 92vw, 440px); margin: 12px var(--gutter) 0; border-radius: var(--radius-panel); }
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--hairline-strong);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty, error and notice states. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 560px;
+  padding: 72px var(--gutter);
+}
+.empty h2 { font-size: 1.5rem; }
+.empty p { color: var(--text-2); line-height: 1.6; overflow-wrap: anywhere; }
+.empty .button { margin-top: 8px; }
+/* Outside TV, empty and error pages are composed in the middle of the content area. */
+html:not([data-layout="tv"]) .empty {
+  align-items: center;
+  justify-content: center;
+  min-height: min(70vh, 640px);
+  margin: 0 auto;
+  text-align: center;
+}
+html:not([data-layout="tv"]) .empty p { text-wrap: balance; }
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--raised);
+  color: var(--text-2);
+}
+/* The search prompt shows the glyph alone, as on every other Reel client. */
+.empty-icon.is-bare { background: none; }
+.empty-icon.is-bare svg { width: 32px; height: 32px; }
+.inline-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 24px var(--gutter) 0;
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: .875rem;
+}
+.field-note { color: var(--text-2); font-size: .8125rem; line-height: 1.55; }
+.form-error { color: var(--danger); font-size: .875rem; line-height: 1.5; }
+.form-error:empty { display: none; }
+.protection-note {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: .8125rem;
+  line-height: 1.55;
+}
+.protection-note svg { width: 18px; height: 18px; margin-top: 1px; color: var(--accent); }
+.storage-recovery {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  background: var(--warning-surface);
+  color: var(--text);
+}
+.storage-recovery h2 { font-size: 1.0625rem; }
+.storage-recovery p { color: #f4ead7; font-size: .875rem; line-height: 1.6; }
+.storage-recovery .actions { margin-top: 6px; }
+.storage-recovery button { scroll-margin: 16px; }
+
+/* Forms. Labels sit above their fields. */
+label { display: grid; gap: 6px; color: var(--text-2); font-size: .8125rem; font-weight: 600; }
+input:not([type="checkbox"]):not([type="range"]),
+select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+  background-color: var(--raised-2);
+  color: var(--text);
+  font-size: .9375rem;
+  font-weight: 500;
+}
+input::placeholder { color: var(--text-2); opacity: 1; }
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f4f4f6a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  text-overflow: ellipsis;
+}
+select option { background: var(--raised-2); color: var(--text); }
+input:focus-visible,
+select:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-color: transparent; }
+select:disabled,
+input:disabled { opacity: .5; }
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--text);
+  font-size: .9375rem;
+  font-weight: 500;
+}
+input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+/* A setting that turns on or off is a switch, the same control the TV layout and the Apple apps use. */
+html:not([data-layout="tv"]) .checkbox.switch { justify-content: space-between; gap: 16px; }
+.checkbox.switch input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 26px;
+  padding: 3px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: #424249;
+  cursor: pointer;
+  transition: background-color var(--fast) var(--ease);
+}
+.checkbox.switch input::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform var(--fast) var(--ease);
+}
+.checkbox.switch input:checked { border-color: transparent; background: var(--accent); }
+.checkbox.switch input:checked::before { background: var(--on-accent); transform: translateX(18px); }
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 6px 0 14px;
+  border-radius: var(--radius-control);
+  background: var(--raised-2);
+}
+.search-field > svg { width: 18px; height: 18px; color: var(--text-2); }
+.search-field input:not([type="checkbox"]) {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.search-field input:focus-visible { outline: none; }
+.search-field:focus-within { box-shadow: 0 0 0 2px var(--text); }
+.search-field .icon-button svg { width: 18px; height: 18px; }
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+/* Dialogs share one surface. */
+.browse-modal-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0c0c0ecc;
+}
+.browse-modal {
+  display: grid;
+  gap: 14px;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  background: var(--raised);
+  box-shadow: 0 24px 64px #0c0c0e99;
+}
+.browse-modal h2 { font-size: 1.375rem; }
+.browse-modal p { color: var(--text-2); font-size: .9375rem; line-height: 1.6; overflow-wrap: anywhere; }
+.browse-modal ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.browse-modal li { padding: 12px 14px; border-radius: var(--radius-control); background: var(--raised-2); }
+.browse-modal .actions { justify-content: flex-end; margin-top: 8px; }
+html:not([data-layout="tv"]) .browse-modal p { text-wrap: pretty; }
+/* Phones: the dialog's buttons share the width, and a long action label takes a full row instead of hanging right. */
+@media (max-width: 767px) {
+  html:not([data-layout="tv"]) .browse-modal .actions .button { flex: 1 1 auto; }
+}
+.browse-container-warning { padding: 12px 14px; border-radius: var(--radius-control); background: var(--warning-surface); }
+.browse-modal .browse-container-warning { color: #f4ead7; }
+
+.toast {
+  position: fixed;
+  z-index: 70;
+  left: 50%;
+  bottom: 28px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 12px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--raised-2);
+  color: var(--text);
+  font-size: .875rem;
+  line-height: 1.5;
+  box-shadow: 0 16px 40px #0c0c0e99;
+  transform: translateX(-50%);
+  overflow-wrap: anywhere;
+}
+
+.photo-viewer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0c0c0ef2;
+}
+.photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.photo-viewer .icon-button {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  background: var(--translucent);
+}

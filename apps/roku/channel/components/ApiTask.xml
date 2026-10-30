@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="ApiTask" extends="Task">
+  <interface>
+    <field id="historyAllowed" type="boolean" value="false" />
+    <field id="request" type="assocarray" />
+    <field id="result" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/Core.brs" />
+  <script type="text/brightscript" uri="pkg:/source/EpisodePlayback.brs" />
+  <script type="text/brightscript" uri="pkg:/source/Operations.brs" />
+  <script type="text/brightscript" uri="ApiTask.brs" />
+</component>
