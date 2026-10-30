@@ -15,7 +15,8 @@ async function connect(page: Page, name: string, tv = false, remember = false): 
   await expect(page.locator('.hero h1')).toBeVisible();
 }
 async function start(page: Page): Promise<void> {
-  await page.locator('.hero').getByRole('button', { name: 'Play', exact: true }).click();
+  // The hero offers Resume once watch history has saved a position for the title.
+  await page.locator('.hero').getByRole('button', { name: /^(Play|Resume)$/ }).click();
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThan(.3);
 }
 async function pause(page: Page): Promise<void> {

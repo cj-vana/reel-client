@@ -18,7 +18,8 @@ test('format disclosure preserves its controls with long captions, narrow window
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.hero')).toBeVisible();
   await page.locator('#rail').getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.locator('#history')).toBeChecked();
+  // Private viewing starts off, so watch history is sent.
+  await expect(page.locator('#history')).not.toBeChecked();
   await page.locator('#rail').getByRole('button', { name: 'Home', exact: true }).click();
   await page.locator('.media-card[data-id="series-7"]').first().click();
   await page.locator('.episode-row[data-id="episode-1-1"] .episode-main').click();
@@ -38,7 +39,9 @@ test('format disclosure preserves its controls with long captions, narrow window
   await assertOpenFormatPanel(page, { width: 320, height: 874 });
   await page.getByRole('button', { name: 'Close player', exact: true }).click();
   await expect(page.locator('#player')).toBeHidden(); await expect(page.locator('.detail-intro h1')).toHaveText(caption);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.reports.filter((entry: { path: string }) => entry.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
-  expect(state.calls.filter((entry: { path: string }) => /^\/User(?:Played|Favorite)Items/.test(entry.path))).toHaveLength(0);
+  const state = async () => (await request.get(fixture + '/qa/state')).json();
+  // Watch history reports the episode's start and stop; playing never marks it watched or favorite.
+  await expect.poll(async () => (await state()).reports.map((entry: { path: string }) => entry.path))
+    .toEqual(expect.arrayContaining(['/Sessions/Playing', '/Sessions/Playing/Stopped']));
+  expect((await state()).calls.filter((entry: { path: string }) => /^\/User(?:Played|Favorite)Items/.test(entry.path))).toHaveLength(0);
 });

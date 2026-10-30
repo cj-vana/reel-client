@@ -31,4 +31,4 @@ Skip Intro needs intro markers from your server. Audio tracks, subtitles, transc
 
 ## Build modes
 
-Normal builds can change things on your server: favorites, watched status and, if you turn it on, watch progress. A read-only preview mode blocks changes on servers that are not on loopback while still allowing sign-in and playback. Apple Debug and simulator builds always protect such servers. Test with a throwaway account. See [privacy](../PRIVACY.md) and [contributing](../CONTRIBUTING.md).
+Normal builds can change things on your server: favorites, watched status and watch progress, unless you turn on Private viewing. A read-only preview mode blocks changes on servers that are not on loopback while still allowing sign-in and playback. Apple Debug and simulator builds always protect such servers. Test with a throwaway account. See [privacy](../PRIVACY.md) and [contributing](../CONTRIBUTING.md).

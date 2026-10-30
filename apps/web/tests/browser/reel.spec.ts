@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -68,6 +68,20 @@ async function preparationFixture(page: Page, kind: 'foreign' | 'base' | 'error'
   return { allocations, cleanups, foreignRequests: () => foreignRequests };
 }
 
+type PlaybackReport = { path: string; body?: { PlaySessionId?: string; PositionTicks?: number } };
+// The fixture resets before each test, so these are the current test's watch reports.
+async function playbackReports(request: APIRequestContext): Promise<PlaybackReport[]> {
+  const state = await (await request.get(fixture + '/qa/state')).json();
+  return (state.reports as PlaybackReport[]).filter(report => report.path.startsWith('/Sessions/Playing'));
+}
+// Watch history is on by default, so playback that starts reports its start and its stop. With a
+// session, every report must belong to it.
+async function expectPlaybackReports(request: APIRequestContext, session?: string): Promise<void> {
+  await expect.poll(async () => (await playbackReports(request)).map(report => report.path))
+    .toEqual(expect.arrayContaining(['/Sessions/Playing', '/Sessions/Playing/Stopped']));
+  if (session) expect((await playbackReports(request)).filter(report => report.body?.PlaySessionId !== session)).toEqual([]);
+}
+
 test.beforeEach(async ({ request }) => { await request.post(fixture + '/qa/reset'); });
 
 test('bad credentials recover, opt-in session survives reload and sign-out removes it', async ({ page }) => {
@@ -134,8 +148,12 @@ test('real MP4 decodes, pauses, seeks and resumes from the updated Details posit
   await skipNative(page, 'ArrowLeft');
   await expect.poll(() => time(page)).toBeLessThan(2);
   await page.getByRole('button', { name: 'Close player', exact: true }).click();
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.reports.filter((report: { path: string }) => report.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Each playback tells the server where it stopped: after the chapter jump, then after skipping back.
+  const stops = async () => (await playbackReports(request)).filter(report => report.path === '/Sessions/Playing/Stopped');
+  await expect.poll(async () => (await stops()).length).toBe(2);
+  const [first, second] = await stops();
+  expect(first.body?.PositionTicks).toBeGreaterThanOrEqual(45_000_000);
+  expect(second.body?.PositionTicks).toBeLessThan(20_000_000);
 });
 
 test('HLS fallback loads actual media and exposes recovery transport', async ({ page }) => {
@@ -910,8 +928,8 @@ test('rejected preparation foreign stream URL releases ownership and Retry remai
   await expect.poll(() => h.allocations.size).toBe(0);
   expect(h.cleanups.filter(call => call.session === 'cleanup-retry')).toHaveLength(1);
   expect(h.cleanups.filter(call => call.live === 'cleanup-live-retry')).toHaveLength(1);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Only the playback that started reports to the server; the rejected or abandoned attempt sends nothing.
+  await expectPlaybackReports(request, 'cleanup-retry');
 });
 
 
@@ -930,8 +948,8 @@ test('rejected preparation out-of-base stream URL releases ownership and Retry r
   await expect.poll(() => h.allocations.size).toBe(0);
   expect(h.cleanups.filter(call => call.session === 'cleanup-retry')).toHaveLength(1);
   expect(h.cleanups.filter(call => call.live === 'cleanup-live-retry')).toHaveLength(1);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Only the playback that started reports to the server; the rejected or abandoned attempt sends nothing.
+  await expectPlaybackReports(request, 'cleanup-retry');
 });
 
 
@@ -950,8 +968,8 @@ test('rejected preparation ErrorCode with source releases ownership and Retry re
   await expect.poll(() => h.allocations.size).toBe(0);
   expect(h.cleanups.filter(call => call.session === 'cleanup-retry')).toHaveLength(1);
   expect(h.cleanups.filter(call => call.live === 'cleanup-live-retry')).toHaveLength(1);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Only the playback that started reports to the server; the rejected or abandoned attempt sends nothing.
+  await expectPlaybackReports(request, 'cleanup-retry');
 });
 
 
@@ -970,8 +988,8 @@ test('rejected preparation source without playable flags releases ownership and 
   await expect.poll(() => h.allocations.size).toBe(0);
   expect(h.cleanups.filter(call => call.session === 'cleanup-retry')).toHaveLength(1);
   expect(h.cleanups.filter(call => call.live === 'cleanup-live-retry')).toHaveLength(1);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Only the playback that started reports to the server; the rejected or abandoned attempt sends nothing.
+  await expectPlaybackReports(request, 'cleanup-retry');
 });
 
 
@@ -1005,8 +1023,8 @@ test('closing pending preparation releases late ownership without disturbing new
   await page.getByRole('button', { name: 'Close player', exact: true }).click();
   await expect.poll(() => h.allocations.size).toBe(0);
   expect(h.cleanups.filter(call => call.session === 'cleanup-retry')).toHaveLength(1);
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  expect(state.calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  // Only the playback that started reports to the server; the rejected or abandoned attempt sends nothing.
+  await expectPlaybackReports(request, 'cleanup-retry');
 });
 
 test('narrow Search keeps the whole field and input visible and usable', async ({ page }) => {
@@ -1131,7 +1149,9 @@ test('persisted page lifecycle closes playback and restores the library without 
   await expect(page.locator('.hero h1')).toBeVisible();await expect(page.locator('#player')).toBeHidden();
   expect(await page.locator('#content').getAttribute('aria-hidden')).toBeNull();
   expect(await page.locator('#content').getAttribute('inert')).toBeNull();
-  expect(await page.locator('#video').getAttribute('src')).toBeNull();expect(reports).toEqual([]);
+  expect(await page.locator('#video').getAttribute('src')).toBeNull();
+  // One start and one stop: pageshow restores the library without starting playback again.
+  await expect.poll(()=>reports).toEqual([fixture+'/Sessions/Playing',fixture+'/Sessions/Playing/Stopped']);
   await expect(page.locator('.hero [data-action="play"][data-id="movie-1"]')).toBeFocused();
   await expect(page.locator('.hero [data-action="play"][data-id="movie-1"]')).toHaveAccessibleName('Resume');
 });
@@ -1174,8 +1194,7 @@ for (const terminal of ['ended','error'] as const) test(`Format yields to ${term
   await expect(page.locator('#player-format')).toBeHidden();expect(await page.locator('.screen').getAttribute('inert')).toBeNull();
   expect(await page.locator('#video').evaluate(element=>(element as HTMLVideoElement).controls)).toBe(true);
   await page.getByRole('button',{name:'Close player',exact:true}).click();await expect(page.locator('#player')).toBeHidden();
-  const state=await(await request.get(fixture+'/qa/state')).json();
-  expect(state.reports.filter((report:{path:string})=>report.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  await expectPlaybackReports(request);
 });
 
 test('cached Details restores its initiating Play focus and selected subtitles without autoplay', async ({ page }) => {

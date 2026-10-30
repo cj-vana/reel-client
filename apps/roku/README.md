@@ -6,7 +6,7 @@ Roku support is experimental. Source and a local sideload package are available;
 
 ## Servers and private viewing
 
-Reel remembers server and account labels, playback preferences and browse choices. Passwords and access tokens remain in memory, so a cold launch requires sign-in again. Private viewing starts on for each account, so watch progress stays on the device until you turn it off in Settings.
+Reel remembers server and account labels, playback preferences and browse choices. Passwords and access tokens remain in memory, so a cold launch requires sign-in again. Each account sends watch progress to Jellyfin. Turn on Private viewing in Settings to keep it on the device.
 
 Home opens with focus on Play or Resume for the first title on the first shelf. Press Down for the shelves and Up to reach the tab bar. Back steps out of title and library screens to the tab bar, then to Home; Back on Home asks before leaving Reel. Where the header shows Options, the remote's * button opens filters, sorting or refresh for the current page.
 

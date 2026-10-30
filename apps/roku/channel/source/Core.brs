@@ -200,7 +200,8 @@ function RKAuthResponse(server as string, username as string, auth as dynamic, i
     if RKString(auth.User.Id) = "" or RKString(auth.User.Name) = "" then return RKError("Jellyfin returned an invalid account.")
     name = "Jellyfin"
     if RKObject(info) then name = RKString(info.ServerName, name)
-    return {ok: true, account: {server: server, username: username, userId: auth.User.Id, name: auth.User.Name, serverName: name, token: auth.AccessToken, history: false}}
+    ' A new account sends watch progress until Private viewing is turned on; a saved account keeps its own choice.
+    return {ok: true, account: {server: server, username: username, userId: auth.User.Id, name: auth.User.Name, serverName: name, token: auth.AccessToken, history: true}}
 end function
 
 function RKMetadata(accounts as object, device as string) as object

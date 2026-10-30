@@ -24,7 +24,7 @@ Saved account names and server addresses, preferences, queue/reading position an
 
 Normal device Release playback can send Jellyfin start/progress/stop reports to update watch history. Failed reports may persist locally with server/account identity, item/session identifiers, playback position and owned-resource cleanup metadata. The pending report journal does not contain a password or token and can replay only through a matching signed-in account.
 
-Private viewing suppresses watch reports. Debug builds and all simulator builds protect nonloopback servers from history and library mutations. The loopback fixtures permit mutable tests. Authentication, stream negotiation, owned encoder/tuner cleanup and logout remain possible in protected previews. Device Release builds permit normal server actions and should be tested with a disposable account first.
+Every client sends these reports by default. Turn on Private viewing in Settings to stop them. Debug builds and all simulator builds protect nonloopback servers from history and library mutations. The loopback fixtures permit mutable tests. Authentication, stream negotiation, owned encoder/tuner cleanup and logout remain possible in protected previews. Device Release builds permit normal server actions and should be tested with a disposable account first.
 
 Playback of saved offline copies keeps its progress locally. Removing a connection removes its saved credentials from the app and attempts to revoke the Jellyfin session. Local cleanup errors are shown; deleting a local connection does not delete the server account, library or server-side history. Removing the app does not delete anything already stored by your server.
 

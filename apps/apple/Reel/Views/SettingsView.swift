@@ -34,7 +34,7 @@ struct SettingsView: View {
                 Toggle(isOn: $session.privateViewing) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Private viewing")
-                        Text("Watch progress stays on this device.")
+                        Text("With private viewing on, watch progress stays on this device.")
                             .font(.footnote).foregroundStyle(Color.reelMuted)
                     }
                 }.accessibilityIdentifier("privateViewing")

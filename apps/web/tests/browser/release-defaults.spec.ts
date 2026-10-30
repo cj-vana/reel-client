@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('public configuration enables personal library actions while history remains opt-in', async ({ page, request }) => {
+test('public configuration enables personal library actions and sends watch history by default', async ({ page, request }) => {
   const fixture = 'http://127.0.0.1:18771';
   await page.route('https://media.release.test/**', async route => {
     const url = new URL(route.request().url());
@@ -23,10 +23,14 @@ test('public configuration enables personal library actions while history remain
   await page.locator('#rail').getByRole('button', { name: 'Settings', exact: true }).click();
   const history = page.getByLabel('Private viewing');
   await expect(history).toBeEnabled();
-  await expect(history).toBeChecked();
-  const state = await (await request.get(fixture + '/qa/state')).json();
-  const calls = state.calls.filter((call: { user?: string }) => call.user === 'release-defaults');
-  expect(calls.some((call: { path: string }) => call.path.includes('/UserFavoriteItems/'))).toBe(true);
-  expect(calls.some((call: { path: string }) => call.path.includes('/UserPlayedItems/'))).toBe(true);
-  expect(calls.filter((call: { path: string }) => call.path.startsWith('/Sessions/Playing'))).toHaveLength(0);
+  await expect(history).not.toBeChecked();
+  const calls = async () => {
+    const state = await (await request.get(fixture + '/qa/state')).json();
+    return state.calls.filter((call: { user?: string }) => call.user === 'release-defaults') as { path: string }[];
+  };
+  expect((await calls()).some(call => call.path.includes('/UserFavoriteItems/'))).toBe(true);
+  expect((await calls()).some(call => call.path.includes('/UserPlayedItems/'))).toBe(true);
+  // Playback start and stop reach the server without changing a setting.
+  await expect.poll(async () => (await calls()).filter(call => call.path.startsWith('/Sessions/Playing')).map(call => call.path))
+    .toEqual(expect.arrayContaining(['/Sessions/Playing', '/Sessions/Playing/Stopped']));
 });

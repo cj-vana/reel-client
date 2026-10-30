@@ -30,7 +30,7 @@ Home brings together Continue watching, Next up and recent additions. Library an
 
 The player has previous and next episode controls, a season browser, a cancellable next-episode countdown, audio and subtitle choices, chapters and playback speed. Skip Intro appears when the server supplies valid intro markers. TVs use one remote-controlled transport; browsers retain their native video controls.
 
-Save adds a title to Jellyfin favorites. Mark watched changes its server status; actions affecting a collection or several titles ask for confirmation. Automatic watch-progress sync is a separate setting and starts off.
+Save adds a title to Jellyfin favorites. Mark watched changes its server status; actions affecting a collection or several titles ask for confirmation. Watch progress syncs automatically; turn on Private viewing in Settings to stop it.
 
 Offline video downloads, DVR scheduling, media requests, casting and group viewing are not currently available in this client. The [feature guide](../../docs/features.md) compares what each client offers.
 

@@ -32,7 +32,7 @@ export class DesktopStore {
   constructor(directory,cryptoProvider,{directorySync=syncDirectory,availabilityTimeoutMs=5000}={}){this.directory=resolve(directory);this.crypto=cryptoProvider;this.directorySync=directorySync;this.availabilityTimeoutMs=availabilityTimeoutMs;}
   queue=Promise.resolve();state='unavailable';connectionRevision=0;preferenceRevision=0;
   quarantined=false;
-  connections={accounts:[],activeId:null};preferences={quality:120000000,history:false,autoplay:true};deviceId=randomUUID();
+  connections={accounts:[],activeId:null};preferences={quality:120000000,history:true,autoplay:true};deviceId=randomUUID();
   initialize(){this.initialization??=this.load();return this.initialization.then(()=>this.snapshot());}
   async load(){
     try{
