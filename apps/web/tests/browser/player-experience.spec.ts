@@ -19,9 +19,15 @@ async function start(page: Page): Promise<void> {
   await page.locator('.hero').getByRole('button', { name: /^(Play|Resume)$/ }).click();
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThan(.3);
 }
+// After Resume, the position passes the start check as soon as the saved position is applied, and the
+// player ignores Play and Pause until that resume has been confirmed. Press again until the video pauses,
+// never while it is already paused, so a late first press cannot start it again.
 async function pause(page: Page): Promise<void> {
-  await page.locator('#video').focus(); await page.keyboard.press('Space');
-  await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).paused)).toBe(true);
+  const paused = () => page.locator('#video').evaluate(el => (el as HTMLVideoElement).paused);
+  await expect(async () => {
+    if (!await paused()) { await page.locator('#video').focus(); await page.keyboard.press('Space'); }
+    expect(await paused()).toBe(true);
+  }).toPass({ intervals: [250, 500, 1000], timeout: 10000 });
 }
 // Segment requests are matched by path, whatever their query string.
 const movieSegments = (url: URL) => url.pathname.endsWith('/MediaSegments/movie-1');
