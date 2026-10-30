@@ -50,10 +50,28 @@ Use Settings to choose default quality, watch-progress synchronization, and auto
 
 ## Distribution
 
-The scripts create portable application folders. Signed installers, automatic updates and store packages are not included. Current platform availability is listed in the [installation guide](../../docs/install/README.md).
+The scripts create portable application folders. Installers and store packages are not included. Current platform availability is listed in the [installation guide](../../docs/install/README.md).
 
-- macOS: packages are not signed with a Developer ID and are not notarized. Gatekeeper may block a downloaded copy.
+- macOS: when the release workflow has the signing secrets below, the app is signed with a Developer ID and the hardened runtime (`signing/entitlements.mac.plist` allows only what Electron's JavaScript engine needs), notarized and stapled. Local packages stay ad hoc signed, and Gatekeeper may block an unsigned download.
 - Windows: packages have no Authenticode signature. SmartScreen may warn on first launch.
 - Linux: `chrome-sandbox` is not installed setuid, so the Chromium sandbox needs unprivileged user namespaces. Do not run Reel with the sandbox turned off.
+
+### Updates
+
+`src/updates.mjs` checks for a newer release shortly after launch and every twelve hours, unless Settings turns it off. A signed Mac build uses Electron's `autoUpdater` (Squirrel.Mac) with the `reel-desktop-macos-arm64.json` feed each signed release carries (`scripts/update-feed.mjs` writes it with the ZIP's SHA-256 and size). Every other build asks GitHub's API for the latest release and offers its release page. The page can only ask the main process for the state, a check, a restart into a downloaded update, or the release page (`src/updates-bridge.mjs`). QA builds never check.
+
+### Signing secrets
+
+The release workflow signs and notarizes the Mac app only when all five repository secrets are set:
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERTIFICATE` | The Developer ID Application certificate and its private key, exported as a .p12 file, base64-encoded |
+| `MACOS_CERTIFICATE_PASSWORD` | The password chosen when exporting the .p12 |
+| `APPLE_API_KEY` | The contents of an App Store Connect API key (.p8) with the Developer role |
+| `APPLE_API_KEY_ID` | That key's ID |
+| `APPLE_API_ISSUER` | The issuer ID shown above the keys list in App Store Connect |
+
+The certificate lives only in a temporary keychain for the job, which the job deletes afterwards.
 
 Reel uses pinned Electron and web dependencies. Each package's `app.asar` holds only the shell code, the compiled web client with its asset list, the license and third-party notices. It excludes source maps, development fixtures, test profiles and local settings. See [security](docs/security.md) for storage and permission details.

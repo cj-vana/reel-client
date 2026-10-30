@@ -8,11 +8,11 @@ The desktop app runs Reel in its own window, with keyboard playback controls, fu
 
 Each release has a ZIP for macOS (Apple silicon), Linux (x64) and Windows (x64). Check it against `SHA256SUMS` as described in the [installation guide](README.md#check-your-download). For another processor or system, build from source below.
 
-The ZIP holds the complete application folder. Keep all the files together. There is no automatic updater. The app needs macOS 13, Windows 10 or a current Linux distribution.
+The ZIP holds the complete application. Keep all the files together. The app needs macOS 13, Windows 10 or a current Linux distribution.
 
 ## macOS
 
-Unzip the package and move **Reel.app** to Applications. These packages are not signed with a Developer ID or notarized, so Gatekeeper may block a downloaded copy. A copy you build yourself runs without that warning. If you choose to open a downloaded copy, follow [Apple's instructions](https://support.apple.com/en-us/102445) and keep macOS protections on.
+Unzip the package and move **Reel.app** to Applications. The release notes say whether that release's Mac app is signed with a Developer ID and notarized. A signed copy opens without a warning and installs later releases itself. An unsigned copy may be blocked by Gatekeeper; a copy you build yourself runs without that warning. If you choose to open an unsigned download, follow [Apple's instructions](https://support.apple.com/en-us/102445) and keep macOS protections on.
 
 ## Windows
 
@@ -30,7 +30,12 @@ Enter your server address and account in Reel. Include a path such as `/jellyfin
 
 ## Update or remove
 
-Quit Reel, then replace its folder with the newer package. Keep the old package so you can go back. Saved connections and settings live outside the application folder.
+Reel checks this project's GitHub releases for a newer version shortly after it opens and then twice a day. Settings shows the result:
+
+- A signed Mac app downloads the update in the background and offers **Restart to update**. Keep Reel in Applications; macOS cannot update it while it runs from the Downloads folder.
+- Windows, Linux and unsigned Mac apps show **Download**, which opens the release page. Quit Reel, then replace its folder with the newer package. Keep the old package so you can go back.
+
+Turn off **Check for updates automatically** in Settings to stop the checks; **Check now** still works. Saved connections and settings live outside the application folder.
 
 To remove Reel, sign out, quit, and delete the application folder. This does not end your Jellyfin sessions.
 

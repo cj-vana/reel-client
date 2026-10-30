@@ -53,7 +53,7 @@ What you can do varies by client and by server. The [feature guide](docs/feature
 | iPhone, iPhone Duo and iPad | [Build in Xcode](docs/install/apple.md#iphone-and-ipad) |
 | Apple TV | [Build in Xcode](docs/install/apple.md#apple-tv) |
 | Web and Docker | [Host the web app](docs/install/web-docker.md) |
-| macOS, Windows and Linux | [Desktop packages (unsigned)](docs/install/desktop.md) |
+| macOS, Windows and Linux | [Desktop packages](docs/install/desktop.md) |
 | LG webOS | [Install the IPK (experimental)](docs/install/televisions.md#lg-webos) |
 | Samsung Tizen | [Build and sign (experimental)](docs/install/televisions.md#samsung-tizen) |
 | Roku | [Developer ZIP (experimental)](docs/install/televisions.md#roku) |
