@@ -140,9 +140,14 @@ async function readPrefix(response: Response, limit: number, signal: AbortSignal
       chunks.push(part.value); size += part.value.byteLength; watch();
     }
   } finally { clearTimeout(timer); signal.removeEventListener('abort', stop); stop(); }
-  const bytes = new Uint8Array(size);
+  // One read can bring far more than asked for, the rest of the file when the page is busy; keep the window only.
+  const bytes = new Uint8Array(Math.min(size, limit));
   let at = 0;
-  for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
+  for (const chunk of chunks) {
+    const part = chunk.subarray(0, bytes.length - at);
+    bytes.set(part, at); at += part.byteLength;
+    if (at === bytes.length) break;
+  }
   return bytes;
 }
 
@@ -287,7 +292,10 @@ export class MarkerDetector {
     }
     try {
       const bytes = await readPrefix(response, Math.ceil(window.seconds * BITRATE / 8) + 16_384, signal);
-      return await fingerprint(await this.decode(bytes, signal), this.pause, signal);
+      // A server that sends a lower bitrate than asked fits more audio into the same bytes. Past the opening window
+      // it would reach the credits music, which would then be taken for the intro.
+      const samples = await this.decode(bytes, signal), most = Math.ceil(window.seconds * SAMPLE_RATE);
+      return await fingerprint(samples.length > most ? samples.subarray(0, most) : samples, this.pause, signal);
     } catch (error) {
       if (signal.aborted || isAbort(error)) throw cancelled();
       return undefined;
