@@ -70,7 +70,7 @@ export class UpdateService {
   #wire() {
     if (this.#wired) return;
     this.#wired = true;
-    this.#updater.setFeedURL({ url: feedURL(this.#arch), serverType: 'json' });
+    // Listeners first: setting the feed can report an error straight away, and an unheard error event throws.
     this.#updater.on('update-available', () => this.#set({ status: 'downloading' }));
     this.#updater.on('update-not-available', () => this.#set({ status: 'current', checkedAt: this.#now() }));
     this.#updater.on('update-downloaded', (_event, _notes, name) => {
@@ -79,6 +79,7 @@ export class UpdateService {
     // When Squirrel cannot update (for example when Reel runs from the Downloads folder), the release check still
     // tells the person a new version exists.
     this.#updater.on('error', () => { if (this.state.status !== 'ready') void this.#checkRelease(); });
+    this.#updater.setFeedURL({ url: feedURL(this.#arch), serverType: 'json' });
   }
 
   async #checkRelease() {

@@ -105,6 +105,15 @@ test('when Squirrel cannot update, the release check still offers the download',
   assert.equal(updates.state.status, 'current');
 });
 
+test('an error raised while the feed is being set falls back to the release check instead of throwing', async () => {
+  class FailingFeed extends FakeUpdater { setFeedURL(options) { super.setFeedURL(options); this.emit('error', new Error('Could not get code signature for running application')); } }
+  const updater = new FailingFeed(), updates = service({ install: true, updater });
+  await updates.check();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(updates.state.status, 'available');
+  assert.equal(updates.state.mode, 'download');
+});
+
 test('the release feed names one version, its ZIP on the release, and the ZIP digest and size', () => {
   const url = `https://github.com/${REPOSITORY}/releases/download/v0.3.0/reel-desktop-macos-arm64-v0.3.0.zip`, sha256 = 'a'.repeat(64);
   assert.deepEqual(updateFeed({ version: '0.3.0', url, sha256, size: 1234, date: '2026-10-30T00:00:00.000Z' }), {
