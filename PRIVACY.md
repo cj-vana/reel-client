@@ -1,6 +1,6 @@
 # Privacy
 
-Reel connects only to the servers you choose. It has no accounts of its own, no analytics and no advertising. This page describes what each client stores and sends. The sections on connections, local information and integrations describe the Apple apps in detail; the table below covers the differences in the other clients.
+Reel connects only to the servers you choose, apart from the desktop app's update check described below. It has no accounts of its own, no analytics and no advertising. This page describes what each client stores and sends. The sections on connections, local information and integrations describe the Apple apps in detail; the table below covers the differences in the other clients.
 
 | Client | Where a remembered sign-in is kept | Notes |
 |---|---|---|
@@ -31,6 +31,14 @@ Playback of saved offline copies keeps its progress locally. Removing a connecti
 ## Finding intros and credits
 
 When your server has not marked an episode's intro or credits, every app except Roku asks your server for a low-quality audio copy of the opening and closing minutes of that episode and of a neighboring one, and compare them on the device. Only your server receives these requests. They use their own playback session and are never reported as watched. The app keeps the times it finds, not the audio, and removes them when you sign out of that account. Turn off Find intros and credits in Settings to stop it.
+
+## Desktop downloads
+
+Downloads in the desktop app are copies your server converts, saved in the app's data folder on your computer with the title, the episode name and where you stopped. Your access token is used for the requests and is never written beside them. Signing out of an account removes its downloads.
+
+## Desktop update checks
+
+The desktop app asks GitHub for this project's latest release shortly after it opens and twice a day. A signed Mac app also downloads the release's update feed and, when there is a new version, its ZIP. GitHub receives these requests with your IP address, as with any download from it. Nothing about your servers, accounts or viewing is sent. Turn off Check for updates automatically in Settings to stop the checks.
 
 ## Optional integrations
 

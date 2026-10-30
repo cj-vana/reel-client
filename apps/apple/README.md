@@ -2,6 +2,13 @@
 
 A SwiftUI app for iPhone, iPhone Duo and iPad running iOS or iPadOS 27.0 or later. It is built with Xcode 27.1. Video fills the player window, playback controls float above it, and advanced options open in a sheet.
 
+## iPhone Duo
+
+The app reads the fold of a book-style foldable from the window, so the same code covers the folded outer screen and the open inner one:
+
+- `FoldSpread` (`Reel/Views/Design.swift`) splits an open screen into two pages either side of the crease when each page can hold a readable column. Home, Details and Library keep text and controls on one page; only artwork crosses the crease.
+- `PlayerStage` (`Reel/Views/PlayerView.swift`) puts the video above the fold and the controls below it when the phone stands half open (tabletop), and keeps the transport clear of the fold when it is held like a book. It is plain geometry, so `ReelTests` checks it without the hardware.
+
 ## Build and run
 
 The Xcode project is generated from `project.yml` and is not part of the repository. Install [XcodeGen](https://github.com/yonaskolb/XcodeGen), then generate the project and open it:

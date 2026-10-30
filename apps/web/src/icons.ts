@@ -20,6 +20,7 @@ const paths: Record<string, string> = {
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   restart: '<path d="M4 7v5h5"/><path d="M4.6 12A8 8 0 1 0 7 6.3L4 9"/>',
   captions: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/>',
-  add: '<path d="M12 4v16M4 12h16"/>', connection: '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01"/>'
+  add: '<path d="M12 4v16M4 12h16"/>',
+  download: '<path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 20h16"/>', connection: '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01"/>'
 };
 export function icon(name: string): string { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.library}</svg>`; }

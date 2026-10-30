@@ -25,8 +25,11 @@ try { await readFile(zip); } catch {
 const runtimeSha256 = createHash('sha256').update(await readFile(zip)).digest('hex');
 if (runtimeSha256 !== checksums.sha256[target]) throw new Error('Electron archive checksum mismatch');
 const flavor = qa ? 'qa' : 'production', input = resolve(root, '.cache/package-input-' + flavor);
+// The release workflow sets REEL_MACOS_SIGN=1 once it has imported a Developer ID certificate. Local and QA
+// packages stay ad hoc signed.
+const sign = platform === 'darwin' && !qa && process.env.REEL_MACOS_SIGN === '1';
 await rm(input, { recursive: true, force: true }); await cp(stage, input, { recursive: true });
-const expected = await applyPackageFlavor(input, qa, build.stagePayload);
+const expected = await applyPackageFlavor(input, qa, build.stagePayload, sign);
 if (!manifestsEqual(await payloadManifest(input), expected)) throw new Error('Package input does not match verified build');
 const name = qa ? 'Reel Desktop QA' : 'Reel';
 let icon;
@@ -56,6 +59,18 @@ await flipFuses(binary, { version: FuseVersion.V1, resetAdHocDarwinSignature: tr
   [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false, [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
   [FuseV1Options.WasmTrapHandlers]: true
 });
+// A Developer ID signature with the hardened runtime, then Apple's notarization, let macOS open the download
+// without a warning and let Squirrel.Mac install later releases, which it only accepts when signed by the same team.
+let codeSigning = 'No Developer ID or Windows signature; local ad-hoc macOS runtime only';
+if (sign) {
+  for (const key of ['APPLE_API_KEY_PATH', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER']) if (!process.env[key]) throw new Error('Notarization needs ' + key);
+  const { sign: signApp } = await import('@electron/osx-sign');
+  const { notarize } = await import('@electron/notarize');
+  const entitlements = resolve(root, 'signing/entitlements.mac.plist');
+  await signApp({ app, platform: 'darwin', type: 'distribution', ...(process.env.REEL_MACOS_KEYCHAIN ? { keychain: process.env.REEL_MACOS_KEYCHAIN } : {}), optionsForFile: () => ({ hardenedRuntime: true, entitlements }) });
+  await notarize({ appPath: app, appleApiKey: process.env.APPLE_API_KEY_PATH, appleApiKeyId: process.env.APPLE_API_KEY_ID, appleApiIssuer: process.env.APPLE_API_ISSUER });
+  codeSigning = 'Developer ID signed with the hardened runtime, notarized and stapled';
+}
 const archive = platform === 'darwin' ? join(app, 'Contents/Resources/app.asar') : join(output, 'resources/app.asar');
 const actual = {};
 for (const member of listPackage(archive)) {
@@ -67,7 +82,7 @@ for (const member of listPackage(archive)) {
 if (!manifestsEqual(actual, expected)) throw new Error('Packaged app payload does not match stage');
 const appAsarSha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
 const installedPackage = await packageManifest(output);
-const receipt = { packageSha256: installedPackage.sha256, installedPackage: installedPackage.files, desktopRevision: source.desktopRevision, webRevision: source.webRevision, platform, arch, qa, appAsarSha256, runtimeSha256, payload: actual, fuses: await getCurrentFuseWire(binary), packageDirectory: relative(root, output), codeSigning: 'No Developer ID or Windows signature; local ad-hoc macOS runtime only', recordedAt: new Date().toISOString() };
+const receipt = { packageSha256: installedPackage.sha256, installedPackage: installedPackage.files, desktopRevision: source.desktopRevision, webRevision: source.webRevision, platform, arch, qa, appAsarSha256, runtimeSha256, payload: actual, fuses: await getCurrentFuseWire(binary), packageDirectory: relative(root, output), codeSigning, recordedAt: new Date().toISOString() };
 try { await assertBuildCurrent(build, { stage }); } catch (error) { throw new Error('Source or stage changed during packaging', { cause: error }); }
 if (!manifestsEqual(await payloadManifest(input), expected)) throw new Error('Source or stage changed during packaging');
 await writeFile(resolve(root, `.cache/package-${flavor}-${target}.json`), JSON.stringify(receipt, null, 2) + '\n');

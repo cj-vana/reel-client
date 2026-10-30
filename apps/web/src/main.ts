@@ -6,6 +6,8 @@ import { browserDecoder, MarkerDetector, MarkerStore } from './intro-detection.t
 import { removeConnectionAndRevoke, revokeUnusedSession } from './connection-actions.ts';
 import { refreshWatchedDetail } from './detail-status.ts';
 import { DesktopBrowsePreferences } from './desktop-browse.ts';
+import { updatesBridge, updateSummary, type UpdateState } from './desktop-updates.ts';
+import { downloadable, downloadRequest, downloadStatus, DOWNLOAD_SIZES, offlineBridge, offlineURL, perHour, type DownloadSize, type OfflineEntry } from './desktop-offline.ts';
 import type { BrowseCleanupNotice } from './browse-bridge.ts';
 import { captureBrowseFocus, restoreBrowseFocus, type BrowseFocus } from './library-focus.ts';
 import { LibraryBrowser, WatchedActions, durableBrowseStorage, hasBrowseAlias } from './library-browser.ts';
@@ -47,6 +49,22 @@ const artwork = new ArtworkCache();
 // Engines without a Web Audio decoder keep the server's markers only.
 const markerDecoder = browserDecoder();
 const markerDetector = markerDecoder ? new MarkerDetector(markerDecoder, new MarkerStore(storage)) : undefined;
+// Desktop only: the main process checks for new releases; Settings shows where that stands.
+const updates = desktop ? updatesBridge(window.ReelUpdates) : undefined;
+let updateState: UpdateState | undefined;
+let checkUpdates = storage.getItem('reel.updates') !== 'false';
+// Desktop only: converted downloads saved on this computer.
+const offline = desktop ? offlineBridge(window.ReelOffline) : undefined;
+let downloads: OfflineEntry[] = [];
+offline?.onChange(() => { void refreshDownloads(); });
+if (updates) {
+  updates.onChange(state => {
+    const wasReady = updateState?.status === 'ready';
+    updateState = state; renderUpdateStatus();
+    if (state.status === 'ready' && !wasReady) toast(updateSummary(state).text + ' Restart from Settings to update.');
+  });
+  void updates.state().then(reply => { if (reply.ok && reply.state && !updateState) { updateState = reply.state; renderUpdateStatus(); } }).catch(() => undefined);
+}
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const items = new Map<string, MediaItem>();
 const positions = new Map<string, number>();
@@ -141,6 +159,7 @@ const navigation = [
   ['Home', 'home'], ['Library', 'library'], ['Search', 'search'], ['Favorites', 'heart'],
   ['Music', 'music'], ['Photos', 'photo'], ['Books', 'book'], ['Live TV', 'live'], ['Devices', 'device']
 ];
+if (offline) navigation.push(['Downloads', 'download']);
 
 app.innerHTML = `<div class="app-shell"><aside id="rail" aria-label="Main navigation"></aside><main id="content" tabindex="-1"></main></div><div id="toast" class="toast" role="status" hidden></div><section id="player" class="player" role="dialog" aria-modal="true" aria-label="Video player" hidden>
   <header class="player-header" data-player-overlay>
@@ -728,6 +747,8 @@ async function navigate(next: Route, push = true, preserveDetail = false): Promi
   rail();
   if (route.name === 'Connections') { renderConnections(); window.scrollTo(0, route.scrollY ?? 0); return; }
   if (route.name === 'Settings') { renderSettings(); window.scrollTo(0, route.scrollY ?? 0); settleTVFocus(); return; }
+  if (offline) void refreshDownloads();
+  if (route.name === 'Downloads') { renderDownloads(); window.scrollTo(0, route.scrollY ?? 0); return; }
   loading();
   window.scrollTo(0, 0);
   try {
@@ -1193,7 +1214,7 @@ function renderDetail(): void {
   if (shownTrackMenu?.dataset.id === item.Id) trackMenuOpen = shownTrackMenu.open;
   const trackMenu = trackFields ? `<details class="detail-menu track-menu" id="track-menu" data-id="${escape(item.Id)}"${trackMenuOpen ? ' open' : ''}><summary class="button glass" tabindex="0" aria-label="${trackLabel}">${icon('captions')}<span class="label-full">${trackLabel}</span><span class="label-short" aria-hidden="true">${trackShortLabel}</span></summary><div class="detail-menu-panel track-options"><h2 class="sheet-title" aria-hidden="true">${trackLabel}</h2>${trackFields}</div></details>` : '';
   remember(episodes);
-  show(`<section class="detail-hero${item.Type === 'Series' ? ' detail-series' : ''}">${artworkHTML(item, 'backdrop', 1920)}<div class="detail-shade"></div>${button('back', 'Back', 'back', 'button glass detail-back')}<div class="detail-intro">${artworkHTML(item, 'poster', 600, 'detail-poster')}<div class="detail-heading">${genres ? `<span class="eyebrow">${escape(genres)}</span>` : ''}<h1>${escape(item.Name)}</h1><p class="hero-meta">${factsHTML(item, true)}</p>${overview}<div class="actions">${playButton}${resumable ? button('start-over', 'Restart', 'restart', 'button glass', `data-id="${escape(item.Id)}"`) : ''}${layout === 'tv' && upcoming && seasons.length ? button('tv-episodes', 'Episodes', 'library', 'button glass') : ''}<button class="button glass" data-action="favorite" aria-pressed="${favorite}"${disabled('favorite')}>${icon('heart').replace('<svg', `<svg class="${favorite ? 'is-on' : ''}"`)}<span>Favorite</span></button>${watchedControl}${trackMenu}</div></div></div></section><section class="detail-body"><div class="detail-notes">${notes}</div>${item.Type === 'Series' ? `<section class="episodes" data-tv-group>${layout === 'tv'
+  show(`<section class="detail-hero${item.Type === 'Series' ? ' detail-series' : ''}">${artworkHTML(item, 'backdrop', 1920)}<div class="detail-shade"></div>${button('back', 'Back', 'back', 'button glass detail-back')}<div class="detail-intro">${artworkHTML(item, 'poster', 600, 'detail-poster')}<div class="detail-heading">${genres ? `<span class="eyebrow">${escape(genres)}</span>` : ''}<h1>${escape(item.Name)}</h1><p class="hero-meta">${factsHTML(item, true)}</p>${overview}<div class="actions">${playButton}${resumable ? button('start-over', 'Restart', 'restart', 'button glass', `data-id="${escape(item.Id)}"`) : ''}${layout === 'tv' && upcoming && seasons.length ? button('tv-episodes', 'Episodes', 'library', 'button glass') : ''}<button class="button glass" data-action="favorite" aria-pressed="${favorite}"${disabled('favorite')}>${icon('heart').replace('<svg', `<svg class="${favorite ? 'is-on' : ''}"`)}<span>Favorite</span></button>${watchedControl}${offline && downloadable(item) ? `<div id="download-control" class="download-control">${downloadControlHTML(item)}</div>` : ''}${trackMenu}</div></div></div></section><section class="detail-body"><div class="detail-notes">${notes}</div>${item.Type === 'Series' ? `<section class="episodes" data-tv-group>${layout === 'tv'
     // TV: seasons are a row of tabs above a row of episode cards.
     ? `<header><h2>Episodes</h2></header><div class="season-tabs tv-row" role="group" aria-label="Seasons"${seasonLoading ? ' aria-busy="true"' : ''}>${seasons.map(season => button('season-tab', season.Name, undefined, 'season-tab', `data-id="${escape(season.Id)}" aria-pressed="${season.Id === selectedSeason}"`)).join('')}</div>`
     : `<header><h2>Episodes</h2><label>Season<select id="season"${seasonLoading ? ' disabled' : ''}>${seasons.map(season => `<option value="${escape(season.Id)}"${selected(selectedSeason, season.Id)}>${escape(season.Name)}</option>`).join('')}</select></label></header>`}${seasonLoading ? `<div class="season-loading" role="status"><span class="sr-only">Opening this season.</span><div class="episode-grid" aria-hidden="true">${'<span class="skeleton episode-skeleton-card"></span>'.repeat(Math.max(2, Math.min(episodes.length, 8)))}</div></div>` : episodes.length ? `<div class="episode-grid${layout === 'tv' ? ' tv-row' : ''}">${episodes.map(episode => episodeRow(episode)).join('')}</div>` : '<p>No episodes are available in this season.</p>'}</section>` : ''}${similarHTML()}${item.People?.length ? `<section class="cast"><h2>Cast & crew</h2><div>${item.People.slice(0, 18).map(person => `<article><strong>${escape(person.Name)}</strong><small>${escape(person.Role ?? person.Type ?? '')}</small></article>`).join('')}</div></section>` : ''}</section>`);
@@ -1336,7 +1357,68 @@ function renderConnections(): void {
 }
 
 function renderSettings(): void {
-  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p><label class="checkbox switch"><span>Find intros and credits</span><input id="find-markers" type="checkbox" role="switch" ${findMarkers && markerDetector ? 'checked' : ''} ${markerDetector ? '' : 'disabled'} /></label><p>${markerDetector ? 'When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes to find them. Your server streams a low-quality copy of that audio to do it.' : 'This device cannot read episode audio, so only intros your server marks can be skipped.'}</p><label class="checkbox switch"><span>Skip intros automatically</span><input id="auto-skip-intro" type="checkbox" role="switch" ${autoSkipIntro ? 'checked' : ''} /></label></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p><p class="field-note">Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.</p></section></div>`);
+  show(`${header('Settings', '')}<div class="settings-grid"><section class="settings-panel"><h2>Playback</h2><label>Streaming quality<select id="quality"><option value="120000000"${selected(quality, 120000000)}>Original / auto</option><option value="20000000"${selected(quality, 20000000)}>High · 20 Mbps</option><option value="8000000"${selected(quality, 8000000)}>Balanced · 8 Mbps</option><option value="2000000"${selected(quality, 2000000)}>Data saver · 2 Mbps</option></select></label><label class="checkbox switch"><span>Private viewing</span><input id="history" type="checkbox" role="switch" ${history ? '' : 'checked'} ${currentAPI?.protected ? 'disabled' : ''} /></label><p>${currentAPI?.protected ? 'This preview keeps watch history and library changes off for this server.' : 'With private viewing on, watch progress stays on this device.'}</p><label class="checkbox switch"><span>Find intros and credits</span><input id="find-markers" type="checkbox" role="switch" ${findMarkers && markerDetector ? 'checked' : ''} ${markerDetector ? '' : 'disabled'} /></label><p>${markerDetector ? 'When your server has not marked them, Reel compares the opening and closing minutes of neighboring episodes to find them. Your server streams a low-quality copy of that audio to do it.' : 'This device cannot read episode audio, so only intros your server marks can be skipped.'}</p><label class="checkbox switch"><span>Skip intros automatically</span><input id="auto-skip-intro" type="checkbox" role="switch" ${autoSkipIntro ? 'checked' : ''} /></label></section><section class="settings-panel"><h2>Privacy</h2><p>${icon('shield')}Reel has no analytics or tracking.</p><p>Artwork is cached in memory and cleared when you switch accounts.</p><p>${desktop ? escape(desktop.storageMessage) : connections.recovery ? escape(connections.recovery.message) : `Your password is never saved. Remembered connections stay ${layout === 'tv' ? 'on this TV' : 'in this browser'} until you sign out.`}</p>${!desktop && connections.recovery?.reason === 'unavailable' ? '<p>Quality and Private viewing last for this session only while browser storage is unavailable.</p>' : ''}${button('connections', 'Manage servers', 'connection', 'button quiet')}</section><section class="settings-panel"><h2>About Reel</h2>${layout === 'tv' ? '<p>Use the arrows on your remote to move, OK to select, and Back to return.</p>' : '<p class="keyboard-help">Press / to search. In the player, Space plays or pauses, F switches full screen, the arrow keys seek, and Esc goes back.</p>'}<p>${desktop ? 'Reel for desktop' : config.platform === 'tizen' ? 'Reel for Samsung TV' : config.platform === 'webos' ? 'Reel for LG TV' : 'Reel for the web'}</p>${updates ? `<div id="desktop-updates" class="desktop-updates" aria-live="polite"></div><label class="checkbox switch"><span>Check for updates automatically</span><input id="check-updates" type="checkbox" role="switch" ${checkUpdates ? 'checked' : ''} /></label>` : ''}<p class="field-note">${offline ? 'Recording schedules, media requests, casting and group viewing are not available in this version yet.' : 'Offline downloads, recording schedules, media requests, casting and group viewing are not available in this version yet.'}</p></section></div>`);
+  renderUpdateStatus();
+}
+async function refreshDownloads(): Promise<void> {
+  const account = connections.active;
+  if (!offline || !account) { downloads = []; return; }
+  const reply = await offline.list(account.id).catch(() => undefined);
+  if (!reply?.ok || account.id !== connections.active?.id) return;
+  downloads = reply.items ?? [];
+  if (route.name === 'Downloads') renderDownloads();
+  else if (route.name === 'Details' && detail) {
+    const node = content.querySelector<HTMLElement>('#download-control');
+    if (!node) return;
+    const focused = node.contains(document.activeElement), html = downloadControlHTML(detail);
+    if (node.innerHTML === html) return;
+    node.innerHTML = html;
+    if (focused) node.querySelector<HTMLElement>('summary, button')?.focus();
+  }
+}
+// Details: Download with a choice of size, then progress, then the saved copy.
+function downloadControlHTML(item: MediaItem): string {
+  const entry = downloads.find(value => value.itemId === item.Id);
+  if (api().protected) return `<button class="button glass" disabled title="Downloads are off in view-only mode">${icon('download')}<span>Download</span></button>`;
+  if (entry?.state === 'complete') return `<details class="detail-menu" id="download-menu"><summary class="button glass" tabindex="0">${icon('check')}<span>Downloaded</span></summary><div class="detail-menu-panel"><h2 class="sheet-title" aria-hidden="true">Downloaded</h2>${button('play-download', 'Play download', 'play', 'button quiet', `data-id="${escape(entry.id)}"`)}${button('remove-download', 'Remove download', undefined, 'button quiet', `data-id="${escape(entry.id)}"`)}</div></details>`;
+  if (entry && (entry.state === 'queued' || entry.state === 'downloading')) return `<button class="button glass" data-action="remove-download" data-id="${escape(entry.id)}" aria-label="Cancel download">${icon('download')}<span>${entry.state === 'queued' ? 'Waiting' : Math.floor(entry.progress * 100) + '%'}</span></button>`;
+  const sizes = DOWNLOAD_SIZES.map(size => `<button class="button quiet download-size" data-action="download" data-size="${size.id}"><span>${escape(size.title)}</span><small>${escape(perHour(size.videoBitRate))}</small></button>`).join('');
+  return `<details class="detail-menu" id="download-menu"><summary class="button glass" tabindex="0">${icon('download')}<span>Download</span></summary><div class="detail-menu-panel"><h2 class="sheet-title" aria-hidden="true">Download</h2><p class="field-note">Your server converts a copy to watch without a connection.</p>${sizes}${entry?.state === 'failed' ? `<p class="field-note">${escape(downloadStatus(entry))}</p>` : ''}</div></details>`;
+}
+function renderDownloads(): void {
+  const rows = downloads.slice().sort((a, b) => b.createdAt - a.createdAt).map(entry => `<article class="download-row">${entry.art ? `<img class="download-art" src="${offlineURL(entry, 'art.jpg')}" alt="" loading="lazy" />` : `<div class="download-art">${icon('download')}</div>`}<div class="download-text"><strong>${escape(entry.title)}</strong>${entry.subtitle ? `<span>${escape(entry.subtitle)}</span>` : ''}<small${entry.state === 'failed' ? ' class="download-error"' : ''}>${escape(downloadStatus(entry))}</small>${entry.state === 'downloading' ? `<progress max="1" value="${entry.progress}" aria-label="Download progress"></progress>` : ''}</div><div class="download-actions">${entry.state === 'complete' ? button('play-download', 'Play', 'play', 'button primary', `data-id="${escape(entry.id)}"`) : ''}${button('remove-download', entry.state === 'complete' || entry.state === 'failed' ? 'Remove' : 'Cancel', undefined, 'button quiet', `data-id="${escape(entry.id)}"`)}</div></article>`).join('');
+  show(`${header('Downloads', '')}${rows ? `<div class="download-list">${rows}</div>` : '<div class="downloads-empty"><h2>No downloads yet</h2><p>Open a film or an episode and choose Download. Your server converts a copy, and you can watch it here without a connection.</p></div>'}`);
+}
+// Plays a download from this computer, with no server session.
+function playDownload(entry: OfflineEntry): void {
+  if (isClosing()) return;
+  cancelAutoNext();
+  const generation = ++playingId, initiator = document.activeElement as HTMLElement | null;
+  if (!playing) playerReturnRoute = { ...route, scrollY: window.scrollY, focus: captureBrowseFocus(content), focusItem: initiator?.dataset.id };
+  closePlayerExtras();
+  playerTransitionPending = true;
+  const item: MediaItem = { Id: entry.itemId, Name: entry.subtitle || entry.title, Type: 'Video', RunTimeTicks: Math.round(entry.runtime * TICKS) };
+  playing = true; currentPlayingItem = item; playbackSelection = undefined; playbackChange = undefined; scrubbing = false;
+  document.querySelector<HTMLDetailsElement>('.playback-details')!.open = false; showFormat(false); selectPlayerPanel('options'); presentation.open();
+  updateEpisodeControls();
+  document.querySelector('#player-title')!.textContent = entry.title;
+  document.querySelector('#player-subtitle')!.textContent = entry.subtitle;
+  nextEpisode = undefined;
+  document.querySelector<HTMLElement>('#chapters-label')!.hidden = true; document.querySelector('#chapters')!.innerHTML = '';
+  playbackGeneration = generation;
+  const resume = entry.position > 5 && (!entry.runtime || entry.position < entry.runtime - 30) ? entry.position : 0;
+  void player.openLocal(item, offlineURL(entry), resume);
+}
+player.onLocalPosition = (item, seconds) => {
+  const account = connections.active, entry = downloads.find(value => value.itemId === item.Id && value.state === 'complete');
+  if (offline && account && entry) { entry.position = Math.round(seconds); void offline.position(account.id, entry.id, seconds).catch(() => undefined); }
+};
+function renderUpdateStatus(): void {
+  const node = document.querySelector<HTMLElement>('#desktop-updates');
+  if (!node) return;
+  const summary = updateSummary(updateState), focused = node.contains(document.activeElement);
+  node.innerHTML = `<p>${escape(summary.text)}</p>${summary.action ? button(summary.action.id, summary.action.label, undefined, 'button quiet') : ''}`;
+  if (focused) node.querySelector<HTMLElement>('button')?.focus();
 }
 
 async function liveTV(generation: number, signal: AbortSignal): Promise<void> {
@@ -1505,7 +1587,7 @@ app.addEventListener('click', event => {
       }
       else if (action === 'switch-connection') { setConnectionBusy(true); target.setAttribute('disabled', ''); try { const closed = await player.closeAndDrain(); if (!closed.resourcesComplete) throw new Error('Playback is still closing. Try again in a moment.'); if (!isClosing()) await connections.switch(id!); } finally { setConnectionBusy(false); } }
       else if (action === 'remove-connection') { setConnectionBusy(true); target.setAttribute('disabled', ''); try { const account = connections.all.find(value => value.id === id); if (account) { const released = account.id === connections.activeId ? (await player.closeAndDrain()).resourcesComplete : await player.drainAccountResources(account.id); if (!released) throw new Error('Playback is still closing. Try sign-out again in a moment.'); } if (isClosing()) return; await removeConnectionAndRevoke({ account, remove: () => connections.remove(id!), remaining: () => connections.all,
-          afterRemove: async removed => { markerDetector?.store.forget(removed.id); if (!hasBrowseAlias(removed, connections.all)) { try { await browser.preferences.removeAccount({ server: removed.server, userId: removed.userId }); } catch (error) { toast(error instanceof Error ? error.message : 'Signed out. Browse choices could not be removed from this device.'); } } },
+          afterRemove: async removed => { markerDetector?.store.forget(removed.id); await offline?.forget(removed.id).catch(() => undefined); if (!hasBrowseAlias(removed, connections.all)) { try { await browser.preferences.removeAccount({ server: removed.server, userId: removed.userId }); } catch (error) { toast(error instanceof Error ? error.message : 'Signed out. Browse choices could not be removed from this device.'); } } },
           revoke: removed => new JellyfinAPI(removed, removed.server, device, config.previewMode, history).request<void>('Sessions/Logout', { method: 'POST' }).catch(() => toast('Signed out here. The server was unavailable to revoke its session.'))
         }); } finally { setConnectionBusy(false); } }
       else if (action === 'format') { selectPlayerPanel('options'); showFormat(true); }
@@ -1521,6 +1603,20 @@ app.addEventListener('click', event => {
       else if (action === 'player-episode' && id && episodeContext?.episodes.some(episode => episode.Id === id)) { cancelAutoNext(); if (id === currentPlayingItem?.Id) showFormat(false); else await playItem(id); }
       else if (action === 'play-previous' && previousEpisode) await playItem(previousEpisode.Id, true);
       else if (action === 'skip-intro') { const intro = markers().intro; if (intro && Number.isFinite(video.duration) && intro.end <= video.duration && video.currentTime >= intro.start && video.currentTime < intro.end) { player.seek(intro.end); updateTransport(); } }
+      else if (action === 'check-update' || action === 'install-update' || action === 'download-update') {
+        const reply = await (action === 'check-update' ? updates?.check() : action === 'install-update' ? updates?.install() : updates?.download())?.catch(() => undefined);
+        if (reply?.state) { updateState = reply.state; renderUpdateStatus(); }
+        else if (!reply?.ok) toast(action === 'download-update' ? 'The release page could not be opened.' : 'Reel could not reach its update service. Try again in a moment.');
+      }
+      else if (action === 'download' && offline && detail && connections.active) {
+        const item = detail, account = connections.active, size = target.dataset.size as DownloadSize;
+        content.querySelector<HTMLDetailsElement>('#download-menu')?.removeAttribute('open');
+        const reply = await offline.start(downloadRequest(account, device, item, size, selectedMediaSource || undefined)).catch(() => undefined);
+        if (!reply?.ok) toast('The download could not start. Try again.');
+        else { await refreshDownloads(); toast('Downloading ' + item.Name + '. It will be in Downloads.'); }
+      }
+      else if (action === 'remove-download' && offline && connections.active && id) { await offline.remove(connections.active.id, id).catch(() => undefined); await refreshDownloads(); }
+      else if (action === 'play-download' && id) { const entry = downloads.find(value => value.id === id && value.state === 'complete'); if (entry) playDownload(entry); }
       else if (action === 'watch-intro') { const from = Number(document.querySelector<HTMLElement>('#player-intro-notice')?.dataset.from); hideIntroNotice(); if (Number.isFinite(from)) { player.seek(from); updateTransport(); } }
       else if (action === 'cancel-autoplay') cancelAutoNext(true);
       else if (action === 'close-format') showFormat(false);
@@ -1601,6 +1697,7 @@ app.addEventListener('change', event => {
     changePlaybackSettings(next);
   }
   if (field.id === 'player-season') void track(changePlayerSeason(field.value));
+  if (field.id === 'check-updates') { checkUpdates = field.checked; storage.setItem('reel.updates', String(checkUpdates)); saveDesktopPreferences(); }
   if (field.id === 'find-markers') { findMarkers = field.checked; storage.setItem('reel.markers', String(findMarkers)); if (!findMarkers) { foundMarkers = {}; updateTransport(); } saveDesktopPreferences(); }
   if (field.id === 'auto-skip-intro') { autoSkipIntro = field.checked; storage.setItem('reel.autoskip', String(autoSkipIntro)); saveDesktopPreferences(); }
   if (field.id === 'player-autoplay') { autoNext = field.checked; storage.setItem('reel.autoplay', String(autoNext)); if (!autoNext) cancelAutoNext(true); saveDesktopPreferences(); }
@@ -1613,7 +1710,7 @@ app.addEventListener('change', event => {
   if (field.id === 'season') selectSeason(field.value);
 });
 function saveDesktopPreferences(): void {
-  if (desktop) void track(desktop.savePreferences(quality, history, autoNext, findMarkers, autoSkipIntro)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
+  if (desktop) void track(desktop.savePreferences(quality, history, autoNext, findMarkers, autoSkipIntro, checkUpdates)).catch(error => { if (!recoverUncertainStore(error)) toast(error.message); });
 }
 // The season menu (and the TV season tabs) load that season's episodes into the detail page.
 function selectSeason(season: string): void {

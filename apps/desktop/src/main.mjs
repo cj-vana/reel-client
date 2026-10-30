@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, protocol, session, ipcMain, safeStorage } from 'electron';
+import { app, autoUpdater, BrowserWindow, Menu, dialog, net, protocol, session, ipcMain, safeStorage, shell } from 'electron';
 import { readFile, mkdir, lstat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,10 @@ import { installFullscreenSync } from './fullscreen-sync.mjs';
 import { loadAssets, assetResponse } from './assets.mjs';
 import { assertQAProfile } from './qa-profile.mjs';
 import { APP_URL, isOwnedDocument, windowOptions, allowFullscreenRequest, allowFullscreenCheck } from './policy.mjs';
+import { UpdateService } from './updates.mjs';
+import { OfflineDownloads } from './offline.mjs';
+import { installOfflineBridge, offlineResponse } from './offline-bridge.mjs';
+import { installUpdatesBridge } from './updates-bridge.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'reel', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 const flavor = JSON.parse(await readFile(resolve(import.meta.dirname, '../build-flavor.json'), 'utf8'));
@@ -51,6 +55,16 @@ else {
   // The owner outlives every macOS window. A new window cannot clear an uncertain commit.
   const store=new DesktopStore(join(app.getPath('userData'),'secure-store'),desktopCryptoProvider({qa,platform:process.platform,safeStorage}));
   const browseOwner=new BrowseOwner(app.getPath('userData'),store);
+  // QA builds never contact anything but loopback, so they do not check for updates.
+  const updates = qa ? undefined : new UpdateService({
+    version: app.getVersion(), arch: process.arch, install: flavor.signed === true && process.platform === 'darwin',
+    fetch: (url, options) => net.fetch(url, options), updater: autoUpdater, openExternal: url => shell.openExternal(url),
+    enabled: () => store.preferences?.updates !== false
+  });
+  // Downloads fetch through their own in-memory session, so no media or token reaches the HTTP cache on disk.
+  // QA builds download only from loopback fixtures.
+  const downloads = new OfflineDownloads({ root: join(app.getPath('userData'), 'offline'), fetch: (url, options) => session.fromPartition('reel-downloads').fetch(url, options) });
+  const downloadServer = server => !qa || ['127.0.0.1', 'localhost'].includes(new URL(server).hostname);
   let window, assets, ses, quitting = false, crashRestarts = 0, lastCrash = 0;
   function createWindow() {
     // macOS: content runs under an inset title bar; the web layout clears the traffic lights and marks drag regions.
@@ -58,13 +72,15 @@ else {
     window = new BrowserWindow({ ...windowOptions('reel-' + randomUUID(), resolve(import.meta.dirname, 'preload.cjs')), ...chrome });
     const ownedWindow=window,browseBridge=installBrowseBridge(ownedWindow,browseOwner,ipcMain);
     const bridge=installBridge(ownedWindow,store,ipcMain,{saveConnections:(value,context)=>browseOwner.commitConnections(value,context),closeResources:()=>browseBridge.beginClose()});
+    if (updates) installUpdatesBridge(ownedWindow, updates, ipcMain);
+    installOfflineBridge(ownedWindow, downloads, ipcMain, { allowServer: downloadServer });
     let allowedClose = false;
     const closeGate = new CloseGate({ request: () => bridge.requestClose(), finish: () => { allowedClose = true; if (!ownedWindow.isDestroyed()) ownedWindow.close(); if (quitting) app.quit(); } });
     ownedWindow.on('close', event => { if (!allowedClose) { event.preventDefault(); closeGate.begin(); } });
     // Reuse the one memory-only session after macOS closes its last window.
     if (ses) throw new Error('Session must be established before creating a window');
     ses = window.webContents.session;
-    ses.protocol.handle('reel', request => assetResponse(assets, request));
+    ses.protocol.handle('reel', async request => (await offlineResponse(downloads, request)) ?? assetResponse(assets, request));
     // User-initiated fullscreen belongs only to this window's verified main document.
     // Automatic fullscreen and every device, capture, notification or external permission stay denied.
     ses.setPermissionRequestHandler((contents, permission, callback, details) => callback(allowFullscreenRequest(contents, ownedWindow.webContents, permission, details)));
@@ -99,6 +115,8 @@ else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); if (!qa) window.focus(); } });
   app.on('certificate-error', (event, _contents, _url, _error, _certificate, callback) => { event.preventDefault(); callback(false); });
   app.on('before-quit', () => { quitting = true; });
+  // Restarting into an update closes the window through the usual close handshake, then quits.
+  autoUpdater.on('before-quit-for-update', () => { quitting = true; });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('activate', () => { if (!window && assets) createWindow(); });
   async function bootstrap() {
@@ -111,7 +129,9 @@ else {
       { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
       { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }, { role: 'close' }, ...(process.platform !== 'darwin' ? [{ role: 'quit' }] : [])] }
     ]));
+    await downloads.load();
     createWindow();
+    updates?.start();
   } catch (error) {
     if (qa) { console.error('QA startup verification failed: ' + error.name); app.exit(1); }
     await app.whenReady();

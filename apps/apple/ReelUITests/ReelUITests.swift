@@ -92,6 +92,9 @@ import CoreGraphics
     private func home() { XCTAssertTrue(app.buttons["heroDetails"].waitForExistence(timeout: 15)) }
     private func tab(_ name: String) {
         if app.navigationBars[name].exists { return }
+        // On iPad, Reel's sidebar lists every destination, More's included.
+        let sidebar = app.otherElements["reelSidebar"]
+        if sidebar.exists, sidebar.buttons[name].exists { sidebar.buttons[name].tap(); return }
         if ["Media", "Live TV", "Requests", "Devices", "Settings"].contains(name) {
             let more = app.buttons["ellipsis.circle"].firstMatch
             if !more.exists, app.buttons["Show Sidebar"].exists { app.buttons["Show Sidebar"].tap() }

@@ -50,3 +50,49 @@ contextBridge.exposeInMainWorld('ReelBrowsePreferences',Object.freeze({
   return dispose;
  }
 }));
+
+// Downloads: list, start and remove an account's downloads, and save where playback stopped. The main process
+// validates every field again.
+const offlineChannel='reel:offline:v1',offlineChangedChannel='reel:offline:changed:v1';
+const offlineInvoke=message=>ipcRenderer.invoke(offlineChannel,message);
+const offlineId=value=>typeof value==='string'&&/^[0-9a-f-]{36}$/.test(value);
+const offlineAccount=value=>typeof value==='string'&&value.length>0&&value.length<=2600;
+const offlineInvalid=()=>Promise.resolve({ok:false,code:'invalid'});
+let disposeOffline;
+contextBridge.exposeInMainWorld('ReelOffline',Object.freeze({
+ list:accountId=>offlineAccount(accountId)?offlineInvoke({operation:'list',accountId}):offlineInvalid(),
+ start:request=>request!==null&&typeof request==='object'&&!Array.isArray(request)?offlineInvoke({operation:'start',request:{...request}}):offlineInvalid(),
+ remove:(accountId,id)=>offlineAccount(accountId)&&offlineId(id)?offlineInvoke({operation:'remove',accountId,id}):offlineInvalid(),
+ forget:accountId=>offlineAccount(accountId)?offlineInvoke({operation:'forget',accountId}):offlineInvalid(),
+ position:(accountId,id,seconds)=>offlineAccount(accountId)&&offlineId(id)&&Number.isFinite(seconds)?offlineInvoke({operation:'position',accountId,id,seconds}):offlineInvalid(),
+ onChange:callback=>{
+  disposeOffline?.();if(typeof callback!=='function')return()=>{};
+  const listener=()=>{try{callback();}catch{/* A view callback cannot break the subscription. */}};
+  ipcRenderer.on(offlineChangedChannel,listener);
+  const dispose=()=>{ipcRenderer.removeListener(offlineChangedChannel,listener);if(disposeOffline===dispose)disposeOffline=undefined;};disposeOffline=dispose;
+  return dispose;
+ }
+}));
+
+// Updates: read the state, check now, restart into a downloaded update, or open the release page. Nothing the
+// page passes reaches the main process except the operation's name.
+const updatesChannel='reel:updates:v1',updatesStateChannel='reel:updates:state:v1';
+const updatesInvoke=operation=>ipcRenderer.invoke(updatesChannel,{operation});
+const validUpdateState=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===4
+ &&['idle','off','checking','current','available','downloading','ready','error'].includes(value.status)
+ &&(value.version===null||typeof value.version==='string'&&/^\d+\.\d+\.\d+$/.test(value.version))
+ &&['install','download'].includes(value.mode)&&(value.checkedAt===null||Number.isSafeInteger(value.checkedAt));
+let disposeUpdates;
+contextBridge.exposeInMainWorld('ReelUpdates',Object.freeze({
+ state:()=>updatesInvoke('state'),
+ check:()=>updatesInvoke('check'),
+ install:()=>updatesInvoke('install'),
+ download:()=>updatesInvoke('download'),
+ onChange:callback=>{
+  disposeUpdates?.();if(typeof callback!=='function')return()=>{};
+  const listener=(_event,value)=>{if(validUpdateState(value)){try{callback(Object.freeze({...value}));}catch{/* A view callback cannot break the subscription. */}}};
+  ipcRenderer.on(updatesStateChannel,listener);
+  const dispose=()=>{ipcRenderer.removeListener(updatesStateChannel,listener);if(disposeUpdates===dispose)disposeUpdates=undefined;};disposeUpdates=dispose;
+  return dispose;
+ }
+}));

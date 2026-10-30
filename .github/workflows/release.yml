@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - run: python scripts/check-public-source.py
@@ -145,7 +145,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -208,7 +208,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -255,7 +255,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -269,6 +269,39 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      # With these repository secrets, the macOS app is signed with a Developer ID, notarized, and can then
+      # install later releases itself. Without them it stays unsigned, as before.
+      - name: Prepare Developer ID signing
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$CERTIFICATE" ] || [ -z "$API_KEY" ] || [ -z "$API_KEY_ID" ] || [ -z "$API_ISSUER" ]; then
+            echo "Signing secrets are not set, so the macOS app is unsigned and cannot update itself." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/reel-signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          printf '%s' "$API_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          {
+            echo "REEL_MACOS_SIGN=1"
+            echo "REEL_MACOS_KEYCHAIN=$keychain"
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/notary-key.p8"
+            echo "APPLE_API_KEY_ID=$API_KEY_ID"
+            echo "APPLE_API_ISSUER=$API_ISSUER"
+          } >> "$GITHUB_ENV"
       - run: npm run package
       - name: Check the packaged version
         run: |
@@ -278,17 +311,32 @@ jobs:
             bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' ".cache/packages/production/Reel-${TARGET}/Reel.app/Contents/Info.plist")
             [ "$bundle" = "$BASE_VERSION" ] || { echo "Reel.app version is $bundle, expected $BASE_VERSION" >&2; exit 1; }
           fi
-      - name: Archive the unsigned app
+      - name: Archive the app
         run: |
           mkdir -p "$RUNNER_TEMP/out"
+          zip="reel-desktop-${LABEL}-${TAG}.zip"
           cd .cache/packages/production
           app="Reel-${TARGET}"
           [ -d "$app" ] || { echo "Missing package folder $app" >&2; exit 1; }
           if [ "$RUNNER_OS" = Windows ]; then
-            7z a -tzip "$RUNNER_TEMP/out/reel-desktop-${LABEL}-${TAG}.zip" "$app"
+            7z a -tzip "$RUNNER_TEMP/out/$zip" "$app"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            # Reel.app at the top of the ZIP, archived the way Squirrel.Mac expects to unpack it.
+            ditto -c -k --sequesterRsrc --keepParent "$app/Reel.app" "$RUNNER_TEMP/out/$zip"
           else
-            zip -qry "$RUNNER_TEMP/out/reel-desktop-${LABEL}-${TAG}.zip" "$app"
+            zip -qry "$RUNNER_TEMP/out/$zip" "$app"
           fi
+          if [ "${REEL_MACOS_SIGN:-}" = 1 ]; then
+            codesign --verify --deep --strict "$app/Reel.app"
+            xcrun stapler validate "$app/Reel.app"
+            # Apps read the feed through releases/latest, which never points at a pre-release.
+            cd "$GITHUB_WORKSPACE/apps/desktop"
+            node scripts/update-feed.mjs "$BASE_VERSION" "$RUNNER_TEMP/out/$zip" \
+              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${zip}" "$RUNNER_TEMP/out/reel-desktop-${LABEL}.json"
+          fi
+      - name: Remove the signing keychain
+        if: always() && runner.os == 'macOS' && env.REEL_MACOS_KEYCHAIN != ''
+        run: security delete-keychain "$REEL_MACOS_KEYCHAIN"; rm -f "$RUNNER_TEMP/notary-key.p8"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-desktop-${{ matrix.label }}
@@ -377,6 +425,8 @@ jobs:
             THIRD_PARTY.md
             THIRD_PARTY_NOTICES.txt
           )
+          # A signed macOS build brings its update feed.
+          if [ -f reel-desktop-macos-arm64.json ]; then expected+=(reel-desktop-macos-arm64.json); fi
           diff <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort) <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
       - name: Checksums
         working-directory: dist
@@ -384,10 +434,17 @@ jobs:
       - name: Write the release notes
         run: |
           image="ghcr.io/${GH_REPO,,}:${VERSION}"
+          if [ -f dist/reel-desktop-macos-arm64.json ]; then
+            signing="Apart from the macOS app, which is signed with a Developer ID and notarized, none of these packages is signed with a store or code-signing certificate."
+            desktop="ZIPs for macOS (Apple silicon, signed and notarized; it installs later releases itself), and unsigned ZIPs for Windows (x64) and Linux (x64)."
+          else
+            signing="None of these packages is signed with a store or code-signing certificate."
+            desktop="unsigned ZIPs for macOS (Apple silicon, not notarized), Windows (x64) and Linux (x64)."
+          fi
           cat > "$RUNNER_TEMP/notes.md" <<EOF
-          Check each download against SHA256SUMS before you install it. None of these packages is signed with a store or code-signing certificate. See the [installation guide](https://github.com/${GH_REPO}/blob/${TAG}/docs/install/README.md).
+          Check each download against SHA256SUMS before you install it. ${signing} See the [installation guide](https://github.com/${GH_REPO}/blob/${TAG}/docs/install/README.md).
 
-          - **Desktop**: unsigned ZIPs for macOS (Apple silicon, not notarized), Windows (x64) and Linux (x64).
+          - **Desktop**: ${desktop}
           - **Web**: static files to serve from your own HTTPS host.
           - **LG webOS**: unsigned IPK for a TV in Developer Mode.
           - **Roku**: unsigned developer sideload ZIP.
@@ -398,8 +455,13 @@ jobs:
         run: |
           flags=(--draft --verify-tag --title "Reel ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes)
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          mac="dist/reel-desktop-macos-arm64-${TAG}.zip#Reel for macOS, Apple silicon (unsigned, not notarized)" feed=()
+          if [ -f dist/reel-desktop-macos-arm64.json ]; then
+            mac="dist/reel-desktop-macos-arm64-${TAG}.zip#Reel for macOS, Apple silicon (signed and notarized)"
+            feed=("dist/reel-desktop-macos-arm64.json#Update feed the macOS app reads")
+          fi
           gh release create "$TAG" "${flags[@]}" \
-            "dist/reel-desktop-macos-arm64-${TAG}.zip#Reel for macOS, Apple silicon (unsigned, not notarized)" \
+            "$mac" "${feed[@]}" \
             "dist/reel-desktop-windows-x64-${TAG}.zip#Reel for Windows x64 (unsigned)" \
             "dist/reel-desktop-linux-x64-${TAG}.zip#Reel for Linux x64 (unsigned)" \
             "dist/reel-web-${TAG}.zip#Reel web app, static files" \

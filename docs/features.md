@@ -17,11 +17,13 @@ For shows, use Previous and Next, open the season browser, or enable automatic n
 
 TV layouts support directional navigation and visible focus. Phone and tablet layouts use touch targets, native sheets and adaptive navigation. Desktop supports keyboard and pointer input.
 
+On iPhone Duo, open screens lay out as two pages either side of the crease. In the player, a half-open Duo stood like a laptop plays the video above the fold with the controls below it, and one held like a book keeps the controls clear of the fold.
+
 ## Offline and installation
 
 | Capability | Availability |
 | --- | --- |
-| Offline video downloads | Native iPhone and iPad app; compatible original files, or a copy your server converts at 1080p, 720p or 480p |
+| Offline video downloads | iPhone, iPad and the desktop app: a copy your server converts at 1080p, 720p or 480p, or on iPhone and iPad the compatible original file |
 | Installable web app | Supported desktop and mobile browsers |
 | Offline web launch | PWA application shell; server media still requires a connection |
 | Self-hosting | Static web files or Docker |

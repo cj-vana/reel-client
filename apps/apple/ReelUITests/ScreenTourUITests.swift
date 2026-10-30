@@ -187,9 +187,12 @@ import UIKit
         open("Downloads")
         settle()
         capture("downloads")
-        open("More")
-        settle()
-        capture("more")
+        // The iPad sidebar lists More's destinations itself, so only the tab bar has a More screen.
+        if !app.otherElements["reelSidebar"].exists {
+            open("More")
+            settle()
+            capture("more")
+        }
         let settings = app.buttons["Settings"].firstMatch
         if settings.waitForExistence(timeout: 5) {
             settings.tap(); settle()
@@ -220,7 +223,8 @@ import UIKit
         app.launch()
     }
 
-    /// Opens a root section from the tab bar, or from the iPad sidebar, whose items are cells.
+    /// Opens a root section from the tab bar, Reel's iPad sidebar (buttons), or the system sidebar
+    /// a narrow iPad or a foldable can still show (cells).
     private func open(_ root: String) {
         var candidates = [app.buttons[root].firstMatch, app.cells.matching(NSPredicate(format: "label == %@", root)).firstMatch]
         if root == "More" { candidates.insert(app.buttons["ellipsis.circle"].firstMatch, at: 0) }

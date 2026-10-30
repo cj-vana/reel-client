@@ -2,7 +2,7 @@
 
 # Reel
 
-A Jellyfin client for iPhone, iPad, Apple TV, the web, desktop and TV. It is open source under the MIT license.
+A Jellyfin client for iPhone, iPhone Duo, iPad, Apple TV, the web, desktop and TV. It is open source under the MIT license.
 
 ## Screenshots
 
@@ -42,9 +42,20 @@ These use the demo library, with made-up titles and generated artwork. The [web 
 - Skip Intro, and Next episode when the credits start, even if your server has no intro markers. Every app except Roku finds them by comparing the theme music that neighboring episodes share.
 - Keep several servers and accounts, each with its own browsing preferences.
 - Install the web app on a phone or computer, or host it yourself with Docker.
-- Download videos for offline viewing on iPhone and iPad.
+- Download videos for offline viewing on iPhone, iPad and the desktop app, as a copy your server converts at 1080p, 720p or 480p.
 
 What you can do varies by client and by server. The [feature guide](docs/features.md) has the details.
+
+## Jellyfin on iPhone Duo
+
+Reel is laid out for the foldable iPhone Duo, folded and open:
+
+- Folded, the outer screen gets the phone layout.
+- Open, screens lay out as two pages either side of the crease. Text and controls stay off the fold; only artwork runs across it.
+- Stood half open like a laptop, the video plays above the fold and the controls move to the lower half. Held half open like a book, the controls keep clear of the fold.
+- When the hinge moves during playback, the controls appear in their new place.
+
+It installs like the iPhone app: see [iPhone, iPhone Duo and iPad](docs/install/apple.md#iphone-and-ipad).
 
 ## Clients
 
@@ -53,7 +64,7 @@ What you can do varies by client and by server. The [feature guide](docs/feature
 | iPhone, iPhone Duo and iPad | [Build in Xcode](docs/install/apple.md#iphone-and-ipad) |
 | Apple TV | [Build in Xcode](docs/install/apple.md#apple-tv) |
 | Web and Docker | [Host the web app](docs/install/web-docker.md) |
-| macOS, Windows and Linux | [Desktop packages (unsigned)](docs/install/desktop.md) |
+| macOS, Windows and Linux | [Desktop packages](docs/install/desktop.md) |
 | LG webOS | [Install the IPK (experimental)](docs/install/televisions.md#lg-webos) |
 | Samsung Tizen | [Build and sign (experimental)](docs/install/televisions.md#samsung-tizen) |
 | Roku | [Developer ZIP (experimental)](docs/install/televisions.md#roku) |
