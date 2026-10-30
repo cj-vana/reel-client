@@ -23,6 +23,9 @@ async function pause(page: Page): Promise<void> {
   await page.locator('#video').focus(); await page.keyboard.press('Space');
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).paused)).toBe(true);
 }
+// Segment requests are matched by path, whatever their query string.
+const movieSegments = (url: URL) => url.pathname.endsWith('/MediaSegments/movie-1');
+const episodeSegments = (url: URL) => url.pathname.endsWith('/MediaSegments/episode-1-1');
 const options = (page: Page) => page.getByRole('button', { name: 'Playback options', exact: true });
 const closeOptions = (page: Page) => page.getByRole('button', { name: 'Close playback options', exact: true });
 
@@ -244,15 +247,15 @@ test('episode picker exposes recoverable load failure and empty seasons without 
 });
 
 test('Skip intro is offered only within a real validated intro and seeks to its end', async ({ page }) => {
-  await page.route('**/MediaSegments/movie-1?*', route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 10_000_000, EndTicks: 50_000_000 }] } }));
+  await page.route(movieSegments, route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 10_000_000, EndTicks: 50_000_000 }] } }));
   await connect(page, 'skip-intro'); await start(page);
   await expect(page.getByRole('button', { name: 'Skip intro', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Skip intro', exact: true }).click();
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThanOrEqual(5);
   await expect(page.getByRole('button', { name: 'Skip intro', exact: true })).toBeHidden();
   await page.getByRole('button', { name: 'Close player', exact: true }).click();
-  await page.unroute('**/MediaSegments/movie-1?*');
-  await page.route('**/MediaSegments/movie-1?*', route => route.fulfill({ json: { Items: [] } }));
+  await page.unroute(movieSegments);
+  await page.route(movieSegments, route => route.fulfill({ json: { Items: [] } }));
   await page.locator('.hero [data-action="play"]').click();
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThan(5);
   await expect(page.getByRole('button', { name: 'Skip intro', exact: true })).toBeHidden();
@@ -261,7 +264,7 @@ test('Skip intro is offered only within a real validated intro and seeks to its 
 for (const viewport of [{ width: 1920, height: 1080 }, { width: 1280, height: 720 }]) {
   test(`TV Skip intro receives pointer input above the episode transport at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
     await page.setViewportSize(viewport);
-    await page.route('**/MediaSegments/episode-1-1?*', route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'episode-1-1', StartTicks: 0, EndTicks: 50_000_000 }] } }));
+    await page.route(episodeSegments, route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'episode-1-1', StartTicks: 0, EndTicks: 50_000_000 }] } }));
     await connect(page, 'tv-intro-' + viewport.width, true); await startEpisode(page); await pause(page);
     const skip = page.getByRole('button', { name: 'Skip intro', exact: true });
     await expect(skip).toBeVisible();
@@ -314,7 +317,7 @@ test('auto-play preference persists and closing a countdown cannot start another
 });
 
 test('a late intro stays visible after idle controls hide and rejects timing beyond the decoded video', async ({ page }) => {
-  await page.route('**/MediaSegments/movie-1?*', route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 60_000_000, EndTicks: 100_000_000 }] } }));
+  await page.route(movieSegments, route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 60_000_000, EndTicks: 100_000_000 }] } }));
   await connect(page, 'late-intro'); await start(page); await page.locator('#video').focus();
   await expect(page.locator('#player')).toHaveAttribute('data-controls', 'hidden', { timeout: 7000 });
   const skip = page.getByRole('button', { name: 'Skip intro', exact: true });
@@ -322,9 +325,9 @@ test('a late intro stays visible after idle controls hide and rejects timing bey
   expect(await skip.evaluate(el => !!el.closest('[inert],[aria-hidden="true"]'))).toBe(false);
   await skip.click(); await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThanOrEqual(10);
   await page.getByRole('button', { name: 'Close player', exact: true }).click();
-  await page.unroute('**/MediaSegments/movie-1?*');
+  await page.unroute(movieSegments);
   await page.route('**/Items/movie-1?*', async route => { const response = await route.fetch(); const item = await response.json(); delete item.RunTimeTicks; await route.fulfill({ response, json: item }); });
-  await page.route('**/MediaSegments/movie-1?*', route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 0, EndTicks: 300_000_000 }] } }));
+  await page.route(movieSegments, route => route.fulfill({ json: { Items: [{ Type: 'Intro', ItemId: 'movie-1', StartTicks: 0, EndTicks: 300_000_000 }] } }));
   await page.locator('.hero [data-action="play"]').click();
   await expect.poll(() => page.locator('#video').evaluate(el => (el as HTMLVideoElement).currentTime)).toBeGreaterThan(.3);
   await expect(skip).toBeHidden();

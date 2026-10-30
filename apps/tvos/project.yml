@@ -33,6 +33,8 @@ targets:
       - ../apple/Reel/Core/PlaybackExtras.swift
       - ../apple/Reel/Core/Seerr.swift
       - ../apple/Reel/Core/ServerPreferences.swift
+      - ../apple/Reel/Core/AudioFingerprint.swift
+      - ../apple/Reel/Core/IntroDetection.swift
     info:
       path: ReelTV/Info.plist
       properties:

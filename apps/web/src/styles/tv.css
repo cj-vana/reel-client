@@ -798,7 +798,8 @@ html[data-layout="tv"] .player-transport-actions .icon-button svg { width: 1.5re
 html[data-layout="tv"] #up-next { position: absolute; right: 0; bottom: .1rem; padding: .2rem; }
 html[data-layout="tv"] #up-next [data-action="player-episodes"] { display: inline-flex; align-items: center; gap: .4rem; width: auto; padding: 0 .75rem; border-radius: var(--radius-pill); }
 html[data-layout="tv"] #up-next [data-action="player-episodes"] > span { display: inline; font-size: .875rem; font-weight: 600; white-space: nowrap; }
-html[data-layout="tv"] #player-skip-intro {
+html[data-layout="tv"] #player-skip-intro,
+html[data-layout="tv"] #player-next-up {
   right: var(--safe-x);
   bottom: calc(var(--safe-y) + 6.5rem);
   min-height: 2.5rem;
@@ -807,6 +808,8 @@ html[data-layout="tv"] #player-skip-intro {
   font-weight: 600;
   transition: transform var(--fast) var(--ease);
 }
+html[data-layout="tv"] .player-intro-notice { right: var(--safe-x); bottom: calc(var(--safe-y) + 6.5rem); min-height: 2.5rem; font-size: 1rem; }
+html[data-layout="tv"] .player-intro-notice .button { min-height: 2rem; }
 html[data-layout="tv"] .player-sync { bottom: calc(var(--safe-y) + 6rem); font-size: .875rem; }
 html[data-layout="tv"] .player-state h2 { font-size: 1.75rem; }
 html[data-layout="tv"] .player-state p { max-width: 28rem; font-size: 1rem; }

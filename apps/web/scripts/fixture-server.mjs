@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fixtureAddedDate, sortFixtureItems, filterFixtureItems, fixtureGenres, fixtureLibraries } from './fixture-library.mjs';
 import { createDemoLibrary } from './demo-library.mjs';
+import { INTRO_EPISODES, INTRO_RUNTIME, INTRO_TAIL_START } from './intro-fixture.mjs';
 
 const port = Number(process.env.REEL_FIXTURE_PORT ?? 18771);
 const media = resolve(process.env.REEL_FIXTURE_MEDIA ?? '.cache/fixture');
@@ -19,7 +20,9 @@ const names = ['The Quiet Earth', 'After the Last Light', 'North of Nowhere', 'B
 const colors = ['#283b4a', '#284b4d', '#293c61', '#274f68', '#526249', '#44544b'];
 function episode(number, user, season = 1) {
   const Id = `episode-${season}-${number}`;
-  return { Id, Name: ['A new beginning', 'Below the surface', 'The way back'][number - 1] ?? `Synthetic episode ${number}`, Type: 'Episode', SeriesId: 'series-7', SeasonId: 'season-' + season, Genres: ['Drama', 'Adventure'], SeriesName: 'Out of the Blue', SeriesPrimaryImageTag: 'v1', ParentBackdropItemId: 'series-7', ParentBackdropImageTags: ['v1'], IndexNumber: number, ParentIndexNumber: season, RunTimeTicks: 14 * TICKS, Overview: 'A new chapter, and a different way of seeing the world.', ImageTags: { Primary: 'v1' }, UserData: { PlaybackPositionTicks: state.positions.get(user + '|' + Id) ?? 0 }, MediaSources: [source(Id)] };
+  // The intro-scan account plays the longer synthetic episodes built for the intro and credits scan.
+  const runtime = user?.startsWith('intro-scan') && INTRO_EPISODES.includes(Id) ? INTRO_RUNTIME : 14;
+  return { Id, Name: ['A new beginning', 'Below the surface', 'The way back'][number - 1] ?? `Synthetic episode ${number}`, Type: 'Episode', SeriesId: 'series-7', SeasonId: 'season-' + season, Genres: ['Drama', 'Adventure'], SeriesName: 'Out of the Blue', SeriesPrimaryImageTag: 'v1', ParentBackdropItemId: 'series-7', ParentBackdropImageTags: ['v1'], IndexNumber: number, ParentIndexNumber: season, RunTimeTicks: runtime * TICKS, Overview: 'A new chapter, and a different way of seeing the world.', ImageTags: { Primary: 'v1' }, UserData: { PlaybackPositionTicks: state.positions.get(user + '|' + Id) ?? 0 }, MediaSources: [source(Id)] };
 }
 function recentEpisodes(user, order) {
   if (user === 'empty') return [];
@@ -80,6 +83,17 @@ const server = createServer(async (request, response) => {
     if (path === '/qa/reset') { state.positions.clear(); state.favorites.clear(); state.watched.clear(); state.reports = []; state.calls = []; state.failures = 0; state.artworkCancellations = 0; state.bookFailures = 0; state.episodeModes.clear(); state.episodeCancellations = 0; send({ ok: true }); return; }
     if (path === '/System/Info/Public') { send({ ServerName: demo ? demo.serverName : 'Reel Test Library', Version: '12.3.0' }); return; }
     if (path === '/Users/AuthenticateByName') { if (body.Pw !== 'demo') send({}, 401); else send({ AccessToken: 'fixture-' + body.Username, User: { Id: body.Username, Name: body.Username === 'second' ? 'Sam' : 'Alex' } }); return; }
+    // The intro scan's audio, as Jellyfin's progressive MP3 transcode would send it. The scan signs in with the
+    // Authorization header, and must use its own play session and no device id.
+    if (request.method === 'GET' && /^\/Audio\/[^/]+\/stream\.mp3$/.test(path)) {
+      const id = path.split('/')[2], start = Number(query.starttimeticks ?? 0) / TICKS;
+      if (!user) { send({}, 401); return; }
+      if (!user.startsWith('intro-scan') || !INTRO_EPISODES.includes(id)) { send({}, 404); return; }
+      if (query.deviceid !== undefined || !/^reel-scan-[0-9a-f]{24}$/.test(query.playsessionid ?? '') || query.audiocodec !== 'mp3') { send({ error: 'Unexpected scan request' }, 400); return; }
+      const file = start === 0 ? id + '.mp3' : Math.abs(start - INTRO_TAIL_START) < 0.01 ? id + '-tail.mp3' : undefined;
+      if (!file) { send({ error: 'Unexpected scan start' }, 400); return; }
+      send(await readFile(resolve(media, 'intro', file)), 200, 'audio/mpeg'); return;
+    }
     if ((request.method === 'GET' || request.method === 'HEAD') && (path.startsWith('/Videos/') || path.startsWith('/Audio/'))) {
       if (!query.apikey?.startsWith('fixture-')) { send({}, 401); return; }
       if (query.apikey === 'fixture-fallback' && path.endsWith('/stream')) { send({}, 415); return; }
@@ -88,7 +102,8 @@ const server = createServer(async (request, response) => {
         playlist = playlist.replace(/^(segment\d+\.ts)$/gm, filename => `/Videos/fixture/${filename}?ApiKey=${encodeURIComponent(query.apikey)}`);
         send(Buffer.from(playlist), 200, 'application/vnd.apple.mpegurl'); return;
       }
-      const file = path.endsWith('.ts') ? resolve(media, 'hls', path.split('/').at(-1)) : await demo?.clip(media, path.split('/')[2]) ?? resolve(media, 'sample.mp4');
+      const scanEpisode = query.apikey.startsWith('fixture-intro-scan') && INTRO_EPISODES.includes(path.split('/')[2]);
+      const file = path.endsWith('.ts') ? resolve(media, 'hls', path.split('/').at(-1)) : scanEpisode ? resolve(media, 'intro', path.split('/')[2] + '.mp4') : await demo?.clip(media, path.split('/')[2]) ?? resolve(media, 'sample.mp4');
       const data = await readFile(file); let start = 0, end = data.length - 1;
       const range = /^bytes=(\d+)-(\d*)$/.exec(request.headers.range ?? '');
       if (range) { start = Number(range[1]); if (range[2]) end = Math.min(end, Number(range[2])); }
@@ -178,6 +193,7 @@ const server = createServer(async (request, response) => {
     if (path.startsWith('/MediaSegments/')) {
       const id = path.split('/').at(-1);
       if (user === 'segments-unavailable') { send({ error: 'No segment provider' }, 404); return; }
+      if (user.startsWith('intro-scan')) { send({ Items: [] }); return; }
       send({ Items: id.startsWith('episode-') ? [{ Id: 'intro-' + id, ItemId: id, Type: 'Intro', StartTicks: 1 * TICKS, EndTicks: 5 * TICKS }] : [] }); return;
     }
     if (path.endsWith('/PlaybackInfo')) {

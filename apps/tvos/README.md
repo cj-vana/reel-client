@@ -7,7 +7,7 @@ A SwiftUI app for Apple TV running tvOS 27.0 or later, built with Xcode 27. It s
 - Password sign-in and saved accounts across several servers.
 - Home shelves, library filters and paging, search, and details for films, series, seasons and episodes.
 - Version, audio and subtitle choice before playback; direct and HLS playback with resume, quality, speed and chapters.
-- Previous and next episode, a season browser inside the player, Skip Intro from server markers, and a cancellable next-episode countdown.
+- Previous and next episode, a season browser inside the player, Skip Intro and Next episode at the credits (from server markers, or found from the episodes' audio when there are none), and a cancellable next-episode countdown.
 - Private viewing, which turns off watch reports.
 
 Not included yet: Quick Connect, server discovery, music and audiobook queues, photos, books, Live TV and DVR, media requests, remote control of other players, SyncPlay, Picture in Picture and downloads. See [platform support](../../docs/platforms.md) and [privacy](PRIVACY.md).

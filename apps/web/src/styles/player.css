@@ -169,18 +169,35 @@ html:not([data-layout="tv"]) .player-header {
 .player-transport-actions .icon-button { width: 52px; height: 52px; }
 .player-transport-actions .player-play { width: 64px; height: 64px; background: var(--primary); color: var(--on-primary); }
 
-#player-skip-intro {
+#player-skip-intro,
+#player-next-up,
+.player-intro-notice {
   position: absolute;
   z-index: 6;
   right: max(24px, env(safe-area-inset-right));
   bottom: calc(140px + env(safe-area-inset-bottom));
   min-height: 44px;
-  padding: 0 22px;
   border-radius: var(--radius-pill);
+}
+#player-skip-intro,
+#player-next-up {
+  padding: 0 22px;
   background: var(--primary);
   color: var(--on-primary);
   font-size: .9375rem;
 }
+/* Shown for a few seconds after an intro is skipped on its own, with a way back to it. */
+.player-intro-notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 4px 4px 20px;
+  background: var(--raised-2);
+  color: var(--text);
+  font-size: .9375rem;
+}
+.player-intro-notice[hidden] { display: none; }
+.player-intro-notice .button { min-height: 36px; padding: 0 16px; }
 
 .player-sync {
   position: absolute;
@@ -409,7 +426,7 @@ html:not([data-layout="tv"]) .player-header {
     max-height: calc(100% - 56px);
     border-radius: 20px;
   }
-  #player-skip-intro { right: 16px; bottom: calc(128px + env(safe-area-inset-bottom)); }
+  #player-skip-intro, #player-next-up, .player-intro-notice { right: 16px; bottom: calc(128px + env(safe-area-inset-bottom)); }
 }
 @media (max-height: 500px) {
   .player-header { padding-top: 8px; padding-bottom: 28px; }
@@ -417,7 +434,7 @@ html:not([data-layout="tv"]) .player-header {
   .player-companion { bottom: 60px; max-height: 42%; }
   .player-state { justify-content: flex-start; padding-top: 64px; }
   .player-format { top: 8px; right: 8px; bottom: 8px; left: auto; width: min(420px, calc(100% - 16px)); max-height: none; }
-  #player-skip-intro { bottom: 112px; }
+  #player-skip-intro, #player-next-up, .player-intro-notice { bottom: 112px; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .player-header .icon-button,
