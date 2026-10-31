@@ -29,9 +29,14 @@ const flavor = qa ? 'qa' : 'production', input = resolve(root, '.cache/package-i
 // packages stay ad hoc signed.
 const sign = platform === 'darwin' && !qa && process.env.REEL_MACOS_SIGN === '1';
 await rm(input, { recursive: true, force: true }); await cp(stage, input, { recursive: true });
-const expected = await applyPackageFlavor(input, qa, build.stagePayload, sign);
+// QA update tests package an older and a newer copy that trust a test key; production ignores both settings.
+const expected = await applyPackageFlavor(input, qa, build.stagePayload, sign,
+  qa ? { updateKey: process.env.REEL_QA_UPDATE_KEY, version: process.env.REEL_QA_VERSION } : {});
 if (!manifestsEqual(await payloadManifest(input), expected)) throw new Error('Package input does not match verified build');
 const name = qa ? 'Reel Desktop QA' : 'Reel';
+// The app reports this version to the updater, so it comes from the build, never from a constant here.
+const appVersion = JSON.parse(await readFile(resolve(input, 'package.json'), 'utf8')).version;
+if (!/^\d+\.\d+\.\d+$/.test(appVersion)) throw new Error('The desktop version must be MAJOR.MINOR.PATCH');
 let icon;
 if (process.platform === 'darwin') {
   const icons = resolve(root, '.cache/icons'), iconset = resolve(icons, 'Reel.iconset');
@@ -49,7 +54,7 @@ if (process.platform === 'darwin') {
     icon = resolve(icons, 'Reel.ico'); await writeFile(icon, Buffer.concat([header, png256]));
   } else if (platform === 'linux') icon = png;
 }
-const paths = await packager({ dir: input, out: resolve(root, '.cache/packages', flavor), platform, arch, electronVersion: checksums.version, electronZipDir: zipDir, name, executableName: 'Reel', appBundleId: qa ? 'app.reelclient.desktop.qa' : 'app.reelclient.desktop', appCategoryType: 'public.app-category.entertainment', appCopyright: 'Copyright 2026 Reel Client contributors', buildVersion: '1', appVersion: '0.1.0', asar: true, overwrite: true, prune: false, ...(icon ? { icon } : {}), osxSign: false, osxNotarize: false });
+const paths = await packager({ dir: input, out: resolve(root, '.cache/packages', flavor), platform, arch, electronVersion: checksums.version, electronZipDir: zipDir, name, executableName: 'Reel', appBundleId: qa ? 'app.reelclient.desktop.qa' : 'app.reelclient.desktop', appCategoryType: 'public.app-category.entertainment', appCopyright: 'Copyright 2026 Reel Client contributors', buildVersion: appVersion, appVersion, asar: true, overwrite: true, prune: false, ...(icon ? { icon } : {}), osxSign: false, osxNotarize: false });
 const output = paths[0], app = platform === 'darwin' ? join(output, name + '.app') : output;
 const binary = platform === 'darwin' ? app : join(output, platform === 'win32' ? 'Reel.exe' : 'Reel');
 await flipFuses(binary, { version: FuseVersion.V1, resetAdHocDarwinSignature: true, strictlyRequireAllFuses: true,
@@ -60,7 +65,7 @@ await flipFuses(binary, { version: FuseVersion.V1, resetAdHocDarwinSignature: tr
   [FuseV1Options.WasmTrapHandlers]: true
 });
 // A Developer ID signature with the hardened runtime, then Apple's notarization, let macOS open the download
-// without a warning and let Squirrel.Mac install later releases, which it only accepts when signed by the same team.
+// without a warning. Updates do not depend on it: the app checks its own signed update manifest.
 let codeSigning = 'No Developer ID or Windows signature; local ad-hoc macOS runtime only';
 if (sign) {
   for (const key of ['APPLE_API_KEY_PATH', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER']) if (!process.env[key]) throw new Error('Notarization needs ' + key);

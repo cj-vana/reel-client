@@ -30,7 +30,7 @@ Packaged apps run `app.asar` only, with `RunAsNode`, `NODE_OPTIONS` and Node ins
 
 Downloads run in the main process with their own in-memory session, read only from the server the request names (every playlist entry is checked against it), and write only under `offline/` in the app data folder. The page reads a finished download through `reel://app/offline/<id>/<file>`, where the file name must be the playlist, a numbered segment or the artwork.
 
-The update check runs in the main process and talks only to GitHub: the releases API, and on a signed Mac the release's feed and ZIP. The page cannot pass it a URL. Squirrel.Mac installs an update only when the new app is signed by the same Developer ID team, and discards a ZIP whose SHA-256 or size differs from the feed.
+The update check runs in the main process and talks only to GitHub: the newest release's update manifest and its signature, the ZIP the manifest names, and the releases API when there is no manifest. The page cannot pass it a URL. A manifest is used only when its Ed25519 signature verifies against the public key built into the app, and a ZIP only when its SHA-256 and size match the manifest. The new version is unpacked next to the installed copy: on macOS by ditto with quarantine left off, and only after `codesign --verify --deep --strict` passes on it; on Windows and Linux by Reel's own ZIP reader, which refuses absolute paths, `..`, entries outside the package's top folder and links that point outside it. The swap runs after Reel quits and puts the old copy back if it fails.
 
 Windows and Linux packages are unsigned, and so is the Mac app when a release is built without the signing secrets; macOS and Windows may warn on first launch. See [desktop installation](../../../docs/install/desktop.md).
 
@@ -38,3 +38,5 @@ Windows and Linux packages are unsigned, and so is the Mac app when a release is
 
 - Closing the window flushes playback reports on a best-effort basis. A crash or network outage can leave a server session to expire on its own.
 - Windows directory metadata durability after a power loss has not been tested.
+- Self-update on macOS has been tested only on a Mac with System Integrity Protection off. With it on, App Management may refuse to let Reel replace its own bundle; the old copy then stays and Reel offers the release page.
+- Without a Developer ID, each update has a different ad hoc signature, so macOS may ask once after an update before Reel can read its saved-connection key from the keychain.

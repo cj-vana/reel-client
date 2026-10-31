@@ -1,4 +1,4 @@
-import { app, autoUpdater, BrowserWindow, Menu, dialog, net, protocol, session, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, Menu, dialog, net, protocol, session, ipcMain, safeStorage, shell } from 'electron';
 import { readFile, mkdir, lstat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,8 @@ import { loadAssets, assetResponse } from './assets.mjs';
 import { assertQAProfile } from './qa-profile.mjs';
 import { APP_URL, isOwnedDocument, windowOptions, allowFullscreenRequest, allowFullscreenCheck } from './policy.mjs';
 import { UpdateService } from './updates.mjs';
+import { RELEASES } from './update-package.mjs';
+import { UPDATE_PUBLIC_KEY } from './update-key.mjs';
 import { OfflineDownloads } from './offline.mjs';
 import { installOfflineBridge, offlineResponse } from './offline-bridge.mjs';
 import { installUpdatesBridge } from './updates-bridge.mjs';
@@ -55,11 +57,22 @@ else {
   // The owner outlives every macOS window. A new window cannot clear an uncertain commit.
   const store=new DesktopStore(join(app.getPath('userData'),'secure-store'),desktopCryptoProvider({qa,platform:process.platform,safeStorage}));
   const browseOwner=new BrowseOwner(app.getPath('userData'),store);
-  // QA builds never contact anything but loopback, so they do not check for updates.
-  const updates = qa ? undefined : new UpdateService({
-    version: app.getVersion(), arch: process.arch, install: flavor.signed === true && process.platform === 'darwin',
-    fetch: (url, options) => net.fetch(url, options), updater: autoUpdater, openExternal: url => shell.openExternal(url),
-    enabled: () => store.preferences?.updates !== false
+  // QA builds never contact anything but loopback: they check for updates only when a test names a loopback
+  // release server and the build carries the test's update key.
+  const qaFeed = qa ? process.argv.find(value => value.startsWith('--reel-qa-update-feed='))?.slice('--reel-qa-update-feed='.length) : undefined;
+  const qaUpdates = qa && typeof flavor.updateKey === 'string' && /^http:\/\/127\.0\.0\.1:\d{4,5}\/releases$/.test(qaFeed ?? '');
+  const updates = qa && !qaUpdates ? undefined : new UpdateService({
+    version: app.getVersion(), platform: process.platform, arch: process.arch, execPath: process.execPath, name: qa ? 'Reel Desktop QA' : 'Reel',
+    userData: app.getPath('userData'), publicKey: qa ? flavor.updateKey : UPDATE_PUBLIC_KEY, releases: qa ? qaFeed : RELEASES,
+    fetch: (url, options) => net.fetch(url, options), openExternal: url => shell.openExternal(url),
+    enabled: () => store.preferences?.updates !== false,
+    // QA copies run from a test's temporary folder, never from Applications.
+    inApplications: process.platform !== 'darwin' || qa || app.isInApplicationsFolder(),
+    // A QA build starts again with the same test switches and temporary folder (its profile lives there); a
+    // normal build starts with none.
+    relaunchArgs: qa ? process.argv.filter(value => value.startsWith('--reel-qa-')) : [],
+    relaunchEnv: qa ? { TMPDIR: tmpdir() } : {},
+    quit: () => app.quit()
   });
   // Downloads fetch through their own in-memory session, so no media or token reaches the HTTP cache on disk.
   // QA builds download only from loopback fixtures.
@@ -115,8 +128,8 @@ else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); if (!qa) window.focus(); } });
   app.on('certificate-error', (event, _contents, _url, _error, _certificate, callback) => { event.preventDefault(); callback(false); });
   app.on('before-quit', () => { quitting = true; });
-  // Restarting into an update closes the window through the usual close handshake, then quits.
-  autoUpdater.on('before-quit-for-update', () => { quitting = true; });
+  // A downloaded update goes in place as Reel quits, whether from "Restart to update" or a normal quit.
+  app.on('will-quit', () => { try { updates?.finishOnQuit(); } catch { /* The update waits for the next run. */ } });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('activate', () => { if (!window && assets) createWindow(); });
   async function bootstrap() {
@@ -131,7 +144,7 @@ else {
     ]));
     await downloads.load();
     createWindow();
-    updates?.start();
+    void updates?.start().catch(() => undefined);
   } catch (error) {
     if (qa) { console.error('QA startup verification failed: ' + error.name); app.exit(1); }
     await app.whenReady();

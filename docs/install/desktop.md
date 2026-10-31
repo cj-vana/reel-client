@@ -12,7 +12,7 @@ The ZIP holds the complete application. Keep all the files together. The app nee
 
 ## macOS
 
-Unzip the package and move **Reel.app** to Applications. The release notes say whether that release's Mac app is signed with a Developer ID and notarized. A signed copy opens without a warning and installs later releases itself. An unsigned copy may be blocked by Gatekeeper; a copy you build yourself runs without that warning. If you choose to open an unsigned download, follow [Apple's instructions](https://support.apple.com/en-us/102445) and keep macOS protections on.
+Unzip the package and move **Reel.app** to Applications. The release notes say whether that release's Mac app is signed with a Developer ID and notarized. A signed copy opens without a warning. An unsigned copy may be blocked by Gatekeeper; a copy you build yourself runs without that warning. If you choose to open an unsigned download, follow [Apple's instructions](https://support.apple.com/en-us/102445) and keep macOS protections on.
 
 ## Windows
 
@@ -30,10 +30,18 @@ Enter your server address and account in Reel. Include a path such as `/jellyfin
 
 ## Update or remove
 
-Reel checks this project's GitHub releases for a newer version shortly after it opens and then twice a day. Settings shows the result:
+Reel checks this project's GitHub releases for a newer version shortly after it opens and then twice a day. When there is one, it downloads it in the background, checks it against the release's signed update manifest, and shows **Restart to update** in Settings. The new version goes in when Reel restarts or quits. This works on macOS, Windows and Linux, with or without a code-signing certificate.
 
-- A signed Mac app downloads the update in the background and offers **Restart to update**. Keep Reel in Applications; macOS cannot update it while it runs from the Downloads folder.
-- Windows, Linux and unsigned Mac apps show **Download**, which opens the release page. Quit Reel, then replace its folder with the newer package. Keep the old package so you can go back.
+Settings shows **Download**, which opens the release page, when Reel cannot replace itself:
+
+- On a Mac, Reel runs from outside Applications, for example from Downloads or a disk image. Move it to Applications.
+- Reel cannot write to its own folder, for example under Program Files on Windows.
+- On Linux, its `chrome-sandbox` helper was made setuid root.
+- The last update could not be put in place. Reel kept the old version and says so.
+
+To update by hand, quit Reel and replace its folder with the newer package. Keep the old package so you can go back.
+
+On a Mac app without a Developer ID signature, macOS may ask once after an update before Reel can read its saved connections from your keychain. Allow it, or deny it and sign in again for that session.
 
 Turn off **Check for updates automatically** in Settings to stop the checks; **Check now** still works. Saved connections and settings live outside the application folder.
 

@@ -62,7 +62,15 @@ The scripts create portable application folders. Installers and store packages a
 
 ### Updates
 
-`src/updates.mjs` checks for a newer release shortly after launch and every twelve hours, unless Settings turns it off. A signed Mac build uses Electron's `autoUpdater` (Squirrel.Mac) with the `reel-desktop-macos-arm64.json` feed each signed release carries (`scripts/update-feed.mjs` writes it with the ZIP's SHA-256 and size). Every other build asks GitHub's API for the latest release and offers its release page. The page can only ask the main process for the state, a check, a restart into a downloaded update, or the release page (`src/updates-bridge.mjs`). QA builds never check.
+`src/updates.mjs` checks for a newer release shortly after launch and every twelve hours, unless Settings turns it off. Updates need no code-signing certificate. Each release carries `reel-desktop-update.json`, which names the ZIP for each platform with its SHA-256 and size, and `reel-desktop-update.json.sig`, an Ed25519 signature over it made with the `DESKTOP_UPDATE_KEY` repository secret (`scripts/update-manifest.mjs`). The app carries the public key in `src/update-key.mjs` and uses nothing from a release until the signature and the ZIP's digest both match (`src/update-package.mjs`).
+
+The new version is unpacked next to the installed copy (`src/update-install.mjs`). On macOS ditto unpacks it without quarantine and the bundle's own signature must verify; on Windows and Linux Reel's own ZIP reader refuses any entry outside the package. When Reel quits, a short shell or PowerShell script swaps the two folders, puts the old one back if the swap fails, records the result for the next launch, and starts Reel again after **Restart to update**.
+
+Reel opens the release page instead when it cannot replace itself: a Mac copy outside an Applications folder or translocated by macOS, a folder it cannot write to, a Linux copy whose `chrome-sandbox` was made setuid root, or an update that failed on the previous run. A build without the public key, or a release without a manifest, gets the release page too.
+
+The page can only ask the main process for the state, a check, a restart into a downloaded update, or the release page (`src/updates-bridge.mjs`). QA builds check only a loopback release server named with `--reel-qa-update-feed`, and only when the package was built with a test key (`REEL_QA_UPDATE_KEY`, plus `REEL_QA_VERSION` to package an older or newer copy).
+
+`node apps/desktop/scripts/update-signing-key.mjs` creates the key once: it stores the private half as the repository secret through the GitHub CLI and writes the public half to `src/update-key.mjs`. Replacing the key stops every installed copy from updating itself.
 
 ### Signing secrets
 
