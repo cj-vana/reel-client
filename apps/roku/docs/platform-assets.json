@@ -1,5 +1,5 @@
 {
-  "tool": "Pillow 12.3.0",
+  "tool": "Pillow 13.0.0",
   "purpose": "Roku manifest canvases generated from the Reel logo",
   "files": [
     {
