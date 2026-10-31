@@ -61,7 +61,7 @@ if (updates) {
   updates.onChange(state => {
     const wasReady = updateState?.status === 'ready';
     updateState = state; renderUpdateStatus();
-    if (state.status === 'ready' && !wasReady) toast(updateSummary(state).text + ' Restart from Settings to update.');
+    if (state.status === 'ready' && !wasReady) toast(updateSummary(state).text);
   });
   void updates.state().then(reply => { if (reply.ok && reply.state && !updateState) { updateState = reply.state; renderUpdateStatus(); } }).catch(() => undefined);
 }
@@ -1413,11 +1413,15 @@ player.onLocalPosition = (item, seconds) => {
   const account = connections.active, entry = downloads.find(value => value.itemId === item.Id && value.state === 'complete');
   if (offline && account && entry) { entry.position = Math.round(seconds); void offline.position(account.id, entry.id, seconds).catch(() => undefined); }
 };
+const renderedUpdate = new WeakMap<HTMLElement, string>();
 function renderUpdateStatus(): void {
   const node = document.querySelector<HTMLElement>('#desktop-updates');
   if (!node) return;
   const summary = updateSummary(updateState), focused = node.contains(document.activeElement);
-  node.innerHTML = `<p>${escape(summary.text)}</p>${summary.action ? button(summary.action.id, summary.action.label, undefined, 'button quiet') : ''}`;
+  const html = `<p>${escape(summary.text)}</p>${summary.action ? button(summary.action.id, summary.action.label, undefined, 'button quiet') : ''}`;
+  // The region is announced on change, so an unchanged summary is left alone.
+  if (renderedUpdate.get(node) === html) return;
+  renderedUpdate.set(node, html); node.innerHTML = html;
   if (focused) node.querySelector<HTMLElement>('button')?.focus();
 }
 

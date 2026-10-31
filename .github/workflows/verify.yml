@@ -183,6 +183,26 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  desktop-windows:
+    name: Desktop updater on Windows
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # The updater uses only Node's built-in modules, so these tests need no install. They run the real
+      # PowerShell helper and unpack a ZIP made by 7-Zip, as the Windows release is.
+      - run: node --test tests/update-package.test.mjs tests/update-install.test.mjs tests/updates.test.mjs
+
   tizen:
     name: Samsung TV
     needs: changes
@@ -351,7 +371,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [changes, workflows, source-checks, web, desktop, tizen, roku, docker, ios, tvos, dependency-review]
+    needs: [changes, workflows, source-checks, web, desktop, desktop-windows, tizen, roku, docker, ios, tvos, dependency-review]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

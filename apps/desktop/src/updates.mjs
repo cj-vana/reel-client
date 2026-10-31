@@ -1,43 +1,41 @@
-// Keeps the desktop app current from this project's GitHub releases. A macOS build signed with a Developer ID
-// installs updates itself through Squirrel.Mac, which reads a small feed attached to each release. Other builds
-// are not code signed, so they only report that a new version exists and open its release page.
-export const REPOSITORY = 'cj-vana/reel-client';
+// Keeps the desktop app current from this project's GitHub releases, without a code-signing certificate. Each
+// release attaches a manifest signed with the project's update key. Reel downloads the ZIP it names for this
+// computer, checks it, unpacks it beside the installed copy, and swaps it in after it quits. Where Reel cannot
+// replace itself (no update key, a copy outside Applications on a Mac, no write access), it says that a new
+// version exists and opens the release page instead.
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { compareVersions, downloadFile, installLocation, readManifest, readSmall, RELEASES, releaseURLs, REPOSITORY, UpdateError } from './update-package.mjs';
+import { executableInside, helperScript, removeLeftovers, RESULT_FILE, stageRelease, startHelper, takeResult } from './update-install.mjs';
+
+export { compareVersions, REPOSITORY };
 export const CHECK_EVERY_MS = 12 * 3_600_000;
 const FIRST_CHECK_MS = 30_000;
 const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
-/** Compares MAJOR.MINOR.PATCH versions, with or without a leading v. A pre-release suffix sorts first. */
-export function compareVersions(a, b) {
-  const parse = value => {
-    const match = /^v?(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(String(value));
-    return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? 0 : 1] : undefined;
-  };
-  const left = parse(a), right = parse(b);
-  if (!left || !right) return NaN;
-  for (let index = 0; index < 4; index++) if (left[index] !== right[index]) return left[index] < right[index] ? -1 : 1;
-  return 0;
-}
-
-/** The feed Squirrel.Mac reads; GitHub redirects latest/download to the newest published release's asset. */
-export const feedURL = arch => `https://github.com/${REPOSITORY}/releases/latest/download/reel-desktop-macos-${arch}.json`;
 export const releasePage = tag => {
   if (!TAG.test(tag)) throw new Error('Unexpected release tag');
   return `https://github.com/${REPOSITORY}/releases/tag/${tag}`;
 };
 
 export class UpdateService {
-  #version; #arch; #install; #fetch; #updater; #open; #enabled; #setTimer; #clearTimer; #now;
-  #timer; #listeners = new Set(); #tag = null; #wired = false;
-  state = { status: 'idle', version: null, mode: 'download', checkedAt: null };
+  // #reason: why this copy opens the release page instead of installing (null when it installs, or has no key).
+  #o; #timer; #listeners = new Set(); #tag = null; #location = null; #reason = null; #ready = null; #relaunch = false; #handedOver = false;
+  /**
+   * status: idle, off, checking, current, available, downloading, ready or error. mode: install when Reel replaces
+   * itself, download when it opens the release page. problem: why not, or what failed.
+   */
+  state = { status: 'idle', version: null, mode: 'download', checkedAt: null, progress: null, problem: null };
 
   /**
-   * install: true for a Developer ID-signed macOS build, whose `updater` is Electron's autoUpdater.
-   * enabled: reads the saved "check for updates" choice each time a check is due.
+   * version, platform, arch, execPath, name (the packaged app name) and userData describe this copy of Reel.
+   * publicKey: the update key, or null. releases: where releases live (a loopback server for QA builds).
+   * fetch, openExternal, enabled() (the saved choice, read at each scheduled check), inApplications (macOS),
+   * relaunchArgs and relaunchEnv (QA builds only) and quit(), which closes Reel through its usual handshake.
+   * Tests may replace setTimer, clearTimer, now, stage, launch and locate.
    */
-  constructor({ version, arch, install, fetch, updater, openExternal, enabled, setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now }) {
-    this.#version = version; this.#arch = arch; this.#install = install === true && !!updater; this.#fetch = fetch; this.#updater = updater;
-    this.#open = openExternal; this.#enabled = enabled; this.#setTimer = setTimer; this.#clearTimer = clearTimer; this.#now = now;
-    this.state = { ...this.state, mode: this.#install ? 'install' : 'download' };
+  constructor(options) {
+    this.#o = { releases: RELEASES, relaunchArgs: [], relaunchEnv: {}, setTimer: setTimeout, clearTimer: clearTimeout, now: Date.now, stage: stageRelease, launch: undefined, locate: installLocation, ...options };
   }
 
   subscribe(listener) { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
@@ -46,67 +44,103 @@ export class UpdateService {
     for (const listener of this.#listeners) { try { listener(this.state); } catch { /* A closed window cannot stop updates. */ } }
   }
 
-  /** Starts the schedule: a first check shortly after launch, then every twelve hours. */
-  start() { this.#schedule(FIRST_CHECK_MS); }
-  stop() { this.#clearTimer(this.#timer); this.#timer = undefined; }
+  /** Finds where Reel is installed, reports how the last update went, and schedules the first check. */
+  async start() {
+    const o = this.#o;
+    this.#location = await o.locate({ platform: o.platform, arch: o.arch, execPath: o.execPath, name: o.name, inApplications: o.inApplications });
+    let installs = !!o.publicKey && this.#location.ok;
+    this.#reason = installs || !o.publicKey ? null : this.#location.reason;
+    if (this.#location.ok) await removeLeftovers(this.#location.parent);
+    // After a swap that failed and was rolled back, this run offers the release page instead of trying again.
+    const last = await takeResult(o.userData);
+    if (last && !last.ok) { installs = false; this.#reason = 'install'; }
+    this.#set({ mode: installs ? 'install' : 'download', problem: this.#reason });
+    this.#schedule(FIRST_CHECK_MS);
+  }
+  stop() { this.#o.clearTimer(this.#timer); this.#timer = undefined; }
   #schedule(delay) {
     this.stop();
-    this.#timer = this.#setTimer(() => { void this.check().finally(() => this.#schedule(CHECK_EVERY_MS)); }, delay);
+    this.#timer = this.#o.setTimer(() => { void this.check().finally(() => this.#schedule(CHECK_EVERY_MS)); }, delay);
   }
 
   async check({ manual = false } = {}) {
-    if (!manual && !this.#enabled()) { this.#set({ status: 'off' }); return this.state; }
+    if (!manual && !this.#o.enabled()) { this.#set({ status: 'off' }); return this.state; }
     if (['checking', 'downloading', 'ready'].includes(this.state.status)) return this.state;
-    this.#set({ status: 'checking' });
-    if (this.#install) {
-      this.#wire();
-      try { this.#updater.checkForUpdates(); } catch { await this.#checkRelease(); }
-      return this.state;
-    }
-    await this.#checkRelease();
+    this.#set({ status: 'checking', progress: null, problem: this.#reason });
+    if (this.state.mode === 'install') await this.#checkSigned();
+    else await this.#checkRelease();
     return this.state;
   }
 
-  #wire() {
-    if (this.#wired) return;
-    this.#wired = true;
-    // Listeners first: setting the feed can report an error straight away, and an unheard error event throws.
-    this.#updater.on('update-available', () => this.#set({ status: 'downloading' }));
-    this.#updater.on('update-not-available', () => this.#set({ status: 'current', checkedAt: this.#now() }));
-    this.#updater.on('update-downloaded', (_event, _notes, name) => {
-      this.#set({ status: 'ready', version: compareVersions(name, '0.0.0') > 0 ? String(name).replace(/^v/, '') : this.state.version, checkedAt: this.#now() });
-    });
-    // When Squirrel cannot update (for example when Reel runs from the Downloads folder), the release check still
-    // tells the person a new version exists.
-    this.#updater.on('error', () => { if (this.state.status !== 'ready') void this.#checkRelease(); });
-    this.#updater.setFeedURL({ url: feedURL(this.#arch), serverType: 'json' });
+  async #checkSigned() {
+    const o = this.#o, urls = releaseURLs(o.releases), folder = join(o.userData, 'updates');
+    try {
+      const [bytes, signature] = await Promise.all([readSmall(o.fetch, urls.manifest), readSmall(o.fetch, urls.signature)]);
+      // The newest release carries no manifest (it was published without the update key): offer its page.
+      if (!bytes || !signature) { await this.#checkRelease(); return; }
+      const release = readManifest(bytes, signature.toString('utf8'), o.publicKey, this.#location.target);
+      if (!(compareVersions(release.version, o.version) > 0)) { this.#set({ status: 'current', version: null, checkedAt: o.now() }); return; }
+      this.#tag = release.tag;
+      this.#set({ status: 'downloading', version: release.version, progress: 0 });
+      await rm(folder, { recursive: true, force: true }); await mkdir(folder, { recursive: true, mode: 0o700 });
+      const zip = join(folder, release.file.name);
+      let shown = 0;
+      await downloadFile(o.fetch, urls.asset(release.tag, release.file.name), zip, release.file, {
+        onProgress: value => { const percent = Math.floor(value * 100); if (percent !== shown) { shown = percent; this.#set({ progress: value }); } }
+      });
+      const staged = await o.stage({ platform: o.platform, zip, location: this.#location, version: release.version });
+      await rm(folder, { recursive: true, force: true });
+      this.#ready = { ...staged, version: release.version };
+      this.#set({ status: 'ready', progress: null, checkedAt: o.now() });
+    } catch (error) {
+      await rm(folder, { recursive: true, force: true }).catch(() => undefined);
+      this.#set({ status: 'error', progress: null, problem: error instanceof UpdateError ? error.code : 'download', checkedAt: o.now() });
+    }
   }
 
   async #checkRelease() {
+    const o = this.#o;
+    // QA builds check only their loopback server, which has no releases API.
+    if (o.releases !== RELEASES) { this.#set({ status: 'current', version: null, checkedAt: o.now() }); return; }
     try {
-      const response = await this.#fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+      const response = await o.fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
       // No published release yet.
-      if (response.status === 404) { this.#tag = null; this.#set({ status: 'current', version: null, checkedAt: this.#now() }); return; }
+      if (response.status === 404) { this.#tag = null; this.#set({ status: 'current', version: null, checkedAt: o.now() }); return; }
       if (!response.ok) throw new Error('Release check failed');
       const release = await response.json(), tag = release?.tag_name;
       if (typeof tag !== 'string' || !TAG.test(tag) || release.draft || release.prerelease) throw new Error('Unexpected release');
-      const newer = compareVersions(tag, this.#version) > 0;
+      const newer = compareVersions(tag, o.version) > 0;
       this.#tag = newer ? tag : null;
-      this.#set({ status: newer ? 'available' : 'current', version: newer ? tag.slice(1) : null, mode: newer && this.#install ? 'download' : this.state.mode, checkedAt: this.#now() });
-    } catch { this.#set({ status: 'error', checkedAt: this.#now() }); }
+      this.#set({ status: newer ? 'available' : 'current', version: newer ? tag.slice(1) : null, checkedAt: o.now() });
+    } catch { this.#set({ status: 'error', checkedAt: o.now() }); }
   }
 
-  /** Restarts into a downloaded update. */
+  /** Restarts into a downloaded update: Reel quits, the helper swaps the copies and starts Reel again. */
   install() {
-    if (this.state.status !== 'ready') return false;
-    this.#updater.quitAndInstall();
+    if (this.state.status !== 'ready' || !this.#ready) return false;
+    this.#relaunch = true;
+    this.#o.quit();
+    return true;
+  }
+
+  /** Called as Reel quits. A downloaded update is put in place then, and Reel starts again only after install(). */
+  finishOnQuit() {
+    if (!this.#ready || this.#handedOver) return false;
+    this.#handedOver = true;
+    const o = this.#o, ready = this.#ready, location = this.#location;
+    const script = helperScript({
+      platform: o.platform, pid: process.pid, folder: location.folder, staging: ready.staging, staged: ready.staged, version: ready.version,
+      resultFile: join(o.userData, RESULT_FILE), relaunch: this.#relaunch, executable: executableInside(o.execPath, location.folder), args: o.relaunchArgs, env: o.relaunchEnv
+    });
+    startHelper({ platform: o.platform, staging: ready.staging, script, ...(o.launch ? { launch: o.launch } : {}) });
     return true;
   }
 
   /** Opens the new release's page in the browser. */
   async download() {
-    if (this.state.status !== 'available' || !this.#tag) return false;
-    await this.#open(releasePage(this.#tag));
+    if (!['available', 'error'].includes(this.state.status) || !this.#tag) return false;
+    await this.#o.openExternal(releasePage(this.#tag));
     return true;
   }
 }
+

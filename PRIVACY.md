@@ -38,7 +38,7 @@ Downloads in the desktop app are copies your server converts, saved in the app's
 
 ## Desktop update checks
 
-The desktop app asks GitHub for this project's latest release shortly after it opens and twice a day. A signed Mac app also downloads the release's update feed and, when there is a new version, its ZIP. GitHub receives these requests with your IP address, as with any download from it. Nothing about your servers, accounts or viewing is sent. Turn off Check for updates automatically in Settings to stop the checks.
+The desktop app asks GitHub for this project's latest release shortly after it opens and twice a day. It also downloads the release's update manifest and, when there is a newer version, the ZIP for your system. GitHub receives these requests with your IP address, as with any download from it. Nothing about your servers, accounts or viewing is sent. Turn off Check for updates automatically in Settings to stop the checks.
 
 ## Optional integrations
 
