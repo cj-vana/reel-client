@@ -583,7 +583,11 @@ enum PlaybackStreamChange: Equatable {
             let selectedIdentity = try await PlaybackNativeAudio.describe(selected, admitted: admitted)
             identity = selectedIdentity
             if let source = capture.source {
-                index = try PlaybackAudioSelection.providerIndex(selected: selectedIdentity, options: options, source: source)
+                if let served = PlaybackAudioSelection.servedIndex(method: method, nativeOptions: options.count, requested: requestedAudio, source: source) {
+                    index = served
+                } else {
+                    index = try PlaybackAudioSelection.providerIndex(selected: selectedIdentity, options: options, source: source)
+                }
                 provider = source.MediaStreams?.first(where: { $0.Type == "Audio" && $0.Index == index })
             } else {
                 _ = try PlaybackAudioSelection.optionIndex(identity: selectedIdentity, options: options)

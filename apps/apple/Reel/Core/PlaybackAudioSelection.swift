@@ -115,6 +115,17 @@ enum PlaybackAudioSelection {
         return stream.Index
     }
 
+    /// The audio track a stream the server converts or repackages carries: the one it was asked for, or the
+    /// source's default. Nil when the stream plays the source directly or holds more than one track, which
+    /// leaves the native track to be matched by `providerIndex`. That match cannot tell two tracks in one
+    /// language apart, and a converted stream's single track never needs it.
+    static func servedIndex(method: String, nativeOptions: Int, requested: Int?, source: MediaSource) -> Int? {
+        guard nativeOptions == 1, method == "Transcode" || method == "DirectStream",
+              let served = requested ?? source.DefaultAudioStreamIndex,
+              (source.MediaStreams ?? []).filter({ $0.Type == "Audio" && $0.Index == served }).count == 1 else { return nil }
+        return served
+    }
+
     static func optionIndex(requested: Int, options: [NativeOption], source: MediaSource) throws -> Int {
         let streams = try audio(source)
         let providers = streams.filter { $0.Index == requested }

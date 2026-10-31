@@ -22,6 +22,22 @@ final class AudioSelectionTests: XCTestCase {
         XCTAssertEqual(try PlaybackAudioSelection.providerIndex(selected: es, options: [en, es], source: media), 7)
         XCTAssertEqual(try PlaybackAudioSelection.optionIndex(requested: 7, options: [en, es], source: media), 1)
     }
+    func testAConvertedStreamUsesTheTrackTheServerWasAskedFor() {
+        // Two English tracks: the stream's one native track matches both, so the native match refuses.
+        var media = source([stream(1, "eng", "English 5.1"), stream(2, "eng", "English Stereo"), stream(3, "spa")])
+        media.DefaultAudioStreamIndex = 1
+        let single = option(nil, "en")
+        XCTAssertThrowsError(try PlaybackAudioSelection.providerIndex(selected: single, options: [single], source: media))
+        XCTAssertEqual(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: 2, source: media), 2)
+        XCTAssertEqual(PlaybackAudioSelection.servedIndex(method: "DirectStream", nativeOptions: 1, requested: nil, source: media), 1)
+        // Direct play carries every track, and a stream with several tracks still needs the native match.
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "DirectPlay", nativeOptions: 1, requested: 2, source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 2, requested: 2, source: media))
+        // A requested index the source does not hold is never trusted.
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: 9, source: media))
+        media.DefaultAudioStreamIndex = nil
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: nil, source: media))
+    }
     func testKnownLanguageAliasesAreMatchedWithoutNames() throws {
         for (provider, native) in [("eng", "en"), ("spa", "es"), ("fre", "fr"), ("ger", "de"), ("dut", "nl"), ("chi", "zh")] {
             let selected = option(nil, native)
