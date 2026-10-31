@@ -14,6 +14,7 @@ struct MainView: View {
     /// Every fold band the screen reports, in global coordinates.
     @State private var divisions: [CGRect] = []
     @State private var screenInsets = EdgeInsets()
+    @State private var windowWidth: CGFloat = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     #if DEBUG
@@ -38,22 +39,29 @@ struct MainView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            let sidebarWidth = sidebarWidth(in: proxy.size.width)
-            HStack(spacing: 0) {
-                if let sidebarWidth {
-                    ReelSidebar(selection: $selectedTab)
-                        .frame(width: sidebarWidth)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                }
-                tabs(hidesTabBar: sidebarWidth != nil)
+        let sidebarWidth = sidebarWidth(in: windowWidth)
+        HStack(spacing: 0) {
+            if let sidebarWidth {
+                ReelSidebar(selection: $selectedTab)
+                    .frame(width: sidebarWidth)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            .animation(.smooth(duration: 0.3), value: sidebarWidth == nil)
-            // The sidebar lists More's destinations itself, and the tab bar reaches them through More.
-            .onChange(of: sidebarWidth == nil) { _, tabBar in
-                if tabBar, [.media, .liveTV, .requests, .devices, .settings].contains(selectedTab) { selectedTab = .more }
-                if !tabBar, selectedTab == .more { selectedTab = .home }
-            }
+            tabs(hidesTabBar: sidebarWidth != nil)
+        }
+        .animation(.smooth(duration: 0.3), value: sidebarWidth == nil)
+        // The sidebar lists More's destinations itself, and the tab bar reaches them through More.
+        .onChange(of: sidebarWidth == nil) { _, tabBar in
+            if tabBar, [.media, .liveTV, .requests, .devices, .settings].contains(selectedTab) { selectedTab = .more }
+            if !tabBar, selectedTab == .more { selectedTab = .home }
+        }
+        // Only the width decides the layout. The keyboard changes the height, and drawing the tabs again
+        // while a field takes focus puts the field back, which raises the keyboard again: on a Duo's outer
+        // screen that never settled and froze the app.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            // The first measurement places the sidebar without sliding it in.
+            var transaction = Transaction()
+            transaction.disablesAnimations = windowWidth == 0
+            withTransaction(transaction) { windowWidth = width }
         }
         .background { Color.reelBackground.ignoresSafeArea() }
         .environment(\.foldCrease, crease)
@@ -130,7 +138,11 @@ struct MainView: View {
             let origin = proxy.frame(in: .global).origin
             return proxy.reservedRegions(kind: .division, options: .includeInactive).map { $0.frame.offsetBy(dx: origin.x, dy: origin.y) }
         } action: { divisions = $0 }
-        .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { screenInsets = $0 }
+        // Only the sides, where a foldable's strip sits. Nothing reads the top or bottom, and the bottom
+        // moves with the keyboard, which would redraw every tab each time it rises.
+        .onGeometryChange(for: EdgeInsets.self) { proxy in
+            EdgeInsets(top: 0, leading: proxy.safeAreaInsets.leading, bottom: 0, trailing: proxy.safeAreaInsets.trailing)
+        } action: { screenInsets = $0 }
         .tabViewSidebarHeader { ReelMark().padding(.vertical, 16) }
     }
 

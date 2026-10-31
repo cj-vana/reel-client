@@ -179,16 +179,18 @@ extension EnvironmentValues {
 }
 #endif
 
-/// Shows the controls while a foldable's hinge moves. The hinge only animates the change; the
-/// layout itself comes from the fold's division region.
-/// Follows the hinge: records whether it is part way open, and shows the controls when it moves.
+/// Follows a foldable's hinge: records whether it is part way open, and shows the controls when that
+/// changes. An update that only moves the angle shows nothing, so holding the phone never brings the
+/// controls back. Folding and opening fully change the posture, which shows them too.
 private struct RevealOnHingeChange: ViewModifier {
     @Binding var partlyOpen: Bool
     let action: @MainActor () -> Void
     func body(content: Content) -> some View {
         if #available(iOS 27.1, *) {
             content.onHingeChange { _, context in
-                partlyOpen = context.hinge?.status == .partiallyOpen
+                let now = context.hinge?.status == .partiallyOpen
+                guard now != partlyOpen else { return }
+                partlyOpen = now
                 action()
             }
         } else {

@@ -272,7 +272,8 @@ import UIKit
 /// person can fold or open a foldable simulator in Device Hub and capture both displays.
 ///
 /// Runs only when the test runner receives `REEL_HOLD_SCREEN` (pass
-/// `TEST_RUNNER_REEL_HOLD_SCREEN=home|movie|series|player|library|search` to xcodebuild). The
+/// `TEST_RUNNER_REEL_HOLD_SCREEN=home|home-scrolled|home-scrolled-back|requests|requests-jellyfin|movie|series|player|library|library-recent|search`
+/// to xcodebuild). The
 /// hold ends when the file named by `REEL_HOLD_RELEASE` exists, or after 30 minutes. The player is
 /// paused a moment after it starts, so a short clip doesn't end while the device is being folded.
 /// `REEL_HOLD_TEXT=largest` opens the screen at the largest accessibility text size.
@@ -302,6 +303,33 @@ import UIKit
         switch screen {
         case "home":
             break
+        case "home-scrolled", "home-scrolled-back":
+            // Past the featured band, so the bar has filled in over the rows; then, for the second
+            // screen, a short drag back up, which brings a hidden bar back.
+            let scroll = app.scrollViews["homeScroll"]
+            scroll.swipeUp(); scroll.swipeUp()
+            if screen == "home-scrolled-back" {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.45))
+                    .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
+            }
+        case "requests", "requests-jellyfin", "requests-focus":
+            let more = app.buttons["ellipsis.circle"].firstMatch
+            if !more.exists, app.buttons["Show Sidebar"].exists { app.buttons["Show Sidebar"].tap() }
+            XCTAssertTrue(more.waitForExistence(timeout: 5)); more.tap()
+            if !app.navigationBars["More"].waitForExistence(timeout: 2) { more.tap() }
+            app.buttons["Requests"].firstMatch.tap()
+            XCTAssertTrue(app.segmentedControls["seerrAuthMethod"].waitForExistence(timeout: 10))
+            if screen == "requests-jellyfin" {
+                print("HOLD-TAP-JELLYFIN")
+                app.segmentedControls["seerrAuthMethod"].buttons["Jellyfin"].tap()
+                print("HOLD-TAPPED username=\(app.textFields["seerrUsername"].waitForExistence(timeout: 5))")
+            }
+            // Focusing a field brings up the keyboard, which once froze the Duo's outer screen.
+            if screen == "requests-focus" {
+                print("HOLD-FOCUS-SERVER")
+                app.textFields["seerrServer"].tap()
+                print("HOLD-FOCUSED keyboard=\(app.keyboards.firstMatch.waitForExistence(timeout: 5))")
+            }
         case "movie", "series":
             app.buttons[screen == "movie" ? "home-Movies" : "home-Series"].tap()
             app.buttons["heroDetails"].tap()
@@ -314,14 +342,19 @@ import UIKit
             Thread.sleep(forTimeInterval: 3)
             app.revealReelPlayerChrome()
             if playPause.label == "Pause" { playPause.tap() }
-        case "library", "search":
+        case "library", "library-recent", "search":
             // A tab bar button, or a cell in the iPad sidebar.
-            let root = screen == "library" ? "Library" : "Search"
+            let root = screen == "search" ? "Search" : "Library"
             let cell = app.cells.matching(NSPredicate(format: "label == %@", root)).firstMatch
             if cell.exists { cell.tap() } else { app.buttons[root].firstMatch.tap() }
             XCTAssertTrue(app.scrollViews["libraryScroll"].waitForExistence(timeout: 10))
+            // The longest sort name, to see the controls row at its widest.
+            if screen == "library-recent" {
+                app.buttons["librarySort"].tap()
+                XCTAssertTrue(app.buttons["Recently added"].waitForExistence(timeout: 5)); app.buttons["Recently added"].tap()
+            }
         default:
-            XCTFail("Unknown screen \(screen); use home, movie, series, player, library or search.")
+            XCTFail("Unknown screen \(screen); use home, home-scrolled, home-scrolled-back, requests, requests-jellyfin, movie, series, player, library, library-recent or search.")
         }
         let release = environment["REEL_HOLD_RELEASE"].map { URL(fileURLWithPath: $0) }
         let deadline = Date().addingTimeInterval(30 * 60)
