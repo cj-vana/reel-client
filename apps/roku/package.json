@@ -13,5 +13,9 @@
   "devDependencies": {
     "brighterscript": "0.73.8",
     "brs": "0.45.0"
+  },
+  "overrides": {
+    "uuid": "11.1.1",
+    "decode-uri-component": "0.5.1"
   }
 }
