@@ -126,6 +126,24 @@ enum PlaybackAudioSelection {
         return served
     }
 
+    /// The native option to select when a converted stream carries one audio track: the track the server was asked
+    /// for. The URL's AudioStreamIndex (without one, the source's default) must be the requested track, and the
+    /// native track's language must not contradict it.
+    static func servedOption(method: String, requested: Int, options: [NativeOption], source: MediaSource) -> Int? {
+        guard method == "Transcode" || method == "DirectStream", options.count == 1, options[0].playable,
+              let streams = try? audio(source) else { return nil }
+        let providers = streams.filter { $0.Index == requested }
+        guard providers.count == 1, let stream = providers.first, !languagesConflict(stream.Language, options[0].language) else { return nil }
+        let asked = URLComponents(string: source.TranscodingUrl ?? "")?.queryItems?
+            .filter { $0.name.caseInsensitiveCompare("AudioStreamIndex") == .orderedSame } ?? []
+        if asked.isEmpty {
+            guard source.DefaultAudioStreamIndex == requested else { return nil }
+        } else {
+            guard asked.count == 1, asked[0].value.flatMap(Int.init) == requested else { return nil }
+        }
+        return 0
+    }
+
     static func optionIndex(requested: Int, options: [NativeOption], source: MediaSource) throws -> Int {
         let streams = try audio(source)
         let providers = streams.filter { $0.Index == requested }
@@ -229,6 +247,10 @@ enum PlaybackSubtitlePlan {
         let (methods, indexes) = fields(source)
         let mentionsEncode = methods.contains { $0.value?.caseInsensitiveCompare("Encode") == .orderedSame }
         if mentionsEncode, methods.count != 1 { throw PlaybackAudioSelection.SelectionError.unavailable }
+        // Jellyfin writes its default method, Encode, into every transcoding URL, also with subtitles off. With no
+        // subtitle index in the URL or as the source's default, there is no subtitle to burn in.
+        if requested == -1, selected == nil, (source.DefaultSubtitleStreamIndex ?? -1) == -1,
+           indexes.allSatisfy({ $0.value.flatMap(Int.init) == -1 }) { return false }
         guard isEncoded(source: source, selected: selected) else { return false }
         guard requested >= 0 else { throw PlaybackAudioSelection.SelectionError.unavailable }
         if let delivery = selected?.DeliveryMethod, !delivery.isEmpty,

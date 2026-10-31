@@ -325,7 +325,8 @@ private final class PlaybackMediaSelectionRevision: Sendable {
         for option in options { values.append(try await describe(option, admitted: admitted)) }
         return (options, values)
     }
-    static func prepare(asset: AVAsset, requested: Int?, identity: Option?, source: MediaSource?,
+    /// method: the server's delivery for this stream (Transcode, DirectStream or DirectPlay), when known.
+    static func prepare(asset: AVAsset, requested: Int?, identity: Option?, source: MediaSource?, method: String? = nil,
                         characteristic: AVMediaCharacteristic = .audible, emptySelection: Bool = false,
                         admitted: () -> Bool) async throws -> Prepared {
         guard requested != nil || identity != nil || emptySelection else { return Prepared(group: nil, option: nil) }
@@ -344,7 +345,10 @@ private final class PlaybackMediaSelectionRevision: Sendable {
         }
         let (options, values) = try await describe(group, admitted: admitted)
         let index: Int
-        if let source, let requested {
+        if let source, let requested, let method,
+           let served = PlaybackAudioSelection.servedOption(method: method, requested: requested, options: values, source: source) {
+            index = served
+        } else if let source, let requested {
             index = try PlaybackAudioSelection.optionIndex(requested: requested, options: values, source: source)
         } else if let identity {
             index = try PlaybackAudioSelection.optionIndex(identity: identity, options: values)
@@ -1047,7 +1051,7 @@ enum PlaybackStreamChange: Equatable {
                         try await PlaybackSubtitleSelection.prepare(asset: asset, requested: subtitleChoice, source: source, streams: subtitleStreams, route: stream.method == "DirectPlay" ? .directPlay : .transcode)
                     } onCancel: { asset.cancelLoading() }
                     initialAudio = try await withTaskCancellationHandler {
-                        try await PlaybackNativeAudio.prepare(asset: asset, requested: audioChoice, identity: audioIntent?.identity, source: source) {
+                        try await PlaybackNativeAudio.prepare(asset: asset, requested: audioChoice, identity: audioIntent?.identity, source: source, method: stream.method) {
                             !Task.isCancelled && self.generation == current && self.requestedAudio == audioChoice
                                 && self.activeItem?.id == resumeItem.id
                                 && self.api.map(PlaybackAudioAccount.init) == PlaybackAudioAccount(api)

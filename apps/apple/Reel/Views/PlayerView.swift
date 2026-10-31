@@ -444,7 +444,8 @@ struct PlayerView: View {
                             timeline.padding(.leading, leading).padding(.trailing, trailing).padding(.bottom, max(insets.bottom, 12) + 4)
                         }
                     }
-                    if !showsEndCard { transport.position(stage.transportCenter) }
+                    // A failed stream has nothing to play, and its message sits where the transport would.
+                    if !showsEndCard && playback.error == nil { transport.position(stage.transportCenter) }
                 }
                 .transition(.opacity)
             }
