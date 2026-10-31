@@ -61,7 +61,7 @@ test('a manifest is used only with a valid signature from the app key, and only 
   assert.throws(() => readManifest(bytes, signature, other, 'linux-x64'), code('signature'));
   assert.throws(() => readManifest(bytes, 'not a signature', publicKey, 'linux-x64'), code('signature'));
   assert.throws(() => readManifest(bytes, signature, 'not a key', 'linux-x64'), code('signature'));
-  const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 }).publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
   assert.throws(() => readManifest(bytes, signature, rsa, 'linux-x64'), code('signature'));
   // A platform the release does not cover.
   assert.throws(() => readManifest(bytes, signature, publicKey, 'win32-x64'), code('manifest'));
