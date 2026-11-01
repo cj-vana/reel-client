@@ -68,18 +68,14 @@ import UIKit
             .allElementsBoundByAccessibilityElement.filter { owner in
                 let visible = owner.frame.intersection(window)
                 return visible.width > 40 && visible.height > 80 && visible.contains(bar.frame)
-                    && owner.scrollViews.containing(.button, identifier: "transportPlayPause")
-                        .containing(.button, identifier: "playbackSpeed").count > 0
+                    && owner.scrollViews.matching(identifier: "playerOptionsScroll").count > 0
             }.sorted { first, second in
                 let firstFrame = first.frame.intersection(window), secondFrame = second.frame.intersection(window)
                 let firstArea = firstFrame.width * firstFrame.height, secondArea = secondFrame.width * secondFrame.height
                 return firstArea == secondArea ? first.scrollViews.count < second.scrollViews.count : firstArea < secondArea
             }
         guard let owner = owners.first else { return nil }
-        let scroll = owner.scrollViews.allElementsBoundByAccessibilityElement.first { scroll in
-            scroll.buttons.matching(identifier: "transportPlayPause").count > 0
-                && scroll.buttons.matching(identifier: "playbackSpeed").count > 0
-        }
+        let scroll = owner.scrollViews.matching(identifier: "playerOptionsScroll").firstMatch
         optionsOwner = owner
         optionsScroll = scroll
         return scroll
@@ -179,25 +175,16 @@ import UIKit
                 if bottom >= visible.maxY - 8 { fingerDown = false }
                 else if top <= visible.minY + 8 { fingerDown = true }
             }
+            if options != nil && container.identifier == "playerOptionsScroll" {
+                // A finger moving down shows what is above.
+                app.dragReelOptions(up: !fingerDown)
+                continue
+            }
             let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
             let startY = visible.minY + visible.height * (fingerDown ? 0.25 : 0.85)
-            var x = window.width > window.height
+            let x = window.width > window.height
                 ? visible.midX
                 : visible.minX + min(20, visible.width * 0.07)
-            if options != nil && container.elementType == .scrollView
-                && container.buttons.matching(identifier: "transportPlayPause").count > 0 {
-                let controls = (container.buttons.allElementsBoundByIndex + container.sliders.allElementsBoundByIndex)
-                    .map { $0.frame.insetBy(dx: -4, dy: -4) }
-                let inset = min(132, visible.width * 0.18)
-                let lanes = [visible.maxX - inset, visible.minX + inset, visible.midX]
-                guard let blankX = lanes.first(where: { candidate in
-                    !controls.contains { $0.contains(CGPoint(x: candidate, y: startY)) }
-                }) else {
-                    attach("no-blank-options-pan-start")
-                    return
-                }
-                x = blankX
-            }
             let start = origin.withOffset(CGVector(dx: x,
                                                   dy: startY))
             let end = origin.withOffset(CGVector(dx: x,

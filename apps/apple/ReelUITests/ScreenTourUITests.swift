@@ -342,6 +342,26 @@ import UIKit
             Thread.sleep(forTimeInterval: 3)
             app.revealReelPlayerChrome()
             if playPause.label == "Pause" { playPause.tap() }
+        case "player-options", "player-options-large":
+            // An episode, so the sheet shows its episode controls too. A series plays from Details.
+            app.buttons["home-Series"].tap()
+            app.buttons["heroDetails"].tap()
+            XCTAssertTrue(app.buttons["seriesPlay"].waitForExistence(timeout: 10))
+            app.buttons["seriesPlay"].tap()
+            XCTAssertTrue(app.buttons["playerPlayPause"].waitForExistence(timeout: 15))
+            Thread.sleep(forTimeInterval: 3)
+            app.revealReelPlayerChrome()
+            app.buttons["playbackOptions"].tap()
+            XCTAssertTrue(app.scrollViews["playerOptionsScroll"].waitForExistence(timeout: 5))
+            // The first swipe opens the sheet to its full height; the second scrolls to its lower half.
+            if screen == "player-options-large" {
+                let scroll = app.scrollViews["playerOptionsScroll"]
+                scroll.swipeUp(velocity: .slow)
+                Thread.sleep(forTimeInterval: 1)
+                scroll.swipeUp(velocity: .slow)
+            }
+            Thread.sleep(forTimeInterval: 1)
+            print("HOLD-OPTIONS")
         case "library", "library-recent", "search":
             // A tab bar button, or a cell in the iPad sidebar.
             let root = screen == "search" ? "Search" : "Library"
@@ -354,7 +374,7 @@ import UIKit
                 XCTAssertTrue(app.buttons["Recently added"].waitForExistence(timeout: 5)); app.buttons["Recently added"].tap()
             }
         default:
-            XCTFail("Unknown screen \(screen); use home, home-scrolled, home-scrolled-back, requests, requests-jellyfin, movie, series, player, library, library-recent or search.")
+            XCTFail("Unknown screen \(screen); use home, home-scrolled, home-scrolled-back, requests, requests-jellyfin, movie, series, player, player-options, player-options-large, library, library-recent or search.")
         }
         let release = environment["REEL_HOLD_RELEASE"].map { URL(fileURLWithPath: $0) }
         let deadline = Date().addingTimeInterval(30 * 60)

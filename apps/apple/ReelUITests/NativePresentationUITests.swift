@@ -375,14 +375,7 @@ import XCTest
     private func swipeContentUp() {
         let window = activeWindow
         if app.navigationBars["Playback options"].exists {
-            let scroll = app.scrollViews.containing(.button, identifier: "transportPlayPause")
-                .containing(.button, identifier: "playbackSpeed").firstMatch
-            XCTAssertTrue(scroll.exists)
-            let bounds = scroll.frame.intersection(window.frame)
-            XCTAssertGreaterThan(bounds.width, 40)
-            XCTAssertGreaterThan(bounds.height, 80)
-            scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.8))
-                .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.25)))
+            app.dragReelOptions(up: true)
             return
         }
         let navigation = app.navigationBars.firstMatch

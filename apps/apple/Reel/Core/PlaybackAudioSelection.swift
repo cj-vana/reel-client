@@ -275,3 +275,50 @@ enum PlaybackSubtitlePlan {
         _ = try encodedDelivery(source: source, selected: nil, requested: -1)
     }
 }
+
+/// Readable names for audio and subtitle tracks. Jellyfin writes DisplayTitle as parts joined by " - ": the track's
+/// own title if it has one, the language, then formats and flags, with a subtitle's codec last in capitals
+/// ("SDH - English - Hearing Impaired - SUBRIP"). The name keeps the language and title ("English (SDH)"); the other
+/// parts go to the detail line. A DisplayTitle in any other shape is shown as it is.
+enum PlaybackTrackLabel {
+    static func name(_ stream: MediaStream) -> String { parts(stream).name }
+    static func detail(_ stream: MediaStream) -> String? {
+        let detail = parts(stream).detail
+        return detail.isEmpty ? nil : detail.joined(separator: " · ")
+    }
+
+    private static func parts(_ stream: MediaStream) -> (name: String, detail: [String]) {
+        let display = trimmed(stream.DisplayTitle), title = trimmed(stream.Title)
+        guard !display.isEmpty else {
+            let name = !title.isEmpty ? title : languageName(stream.Language) ?? "Track \(stream.Index)"
+            return (name, codecLabel(stream.Codec).map { [$0] } ?? [])
+        }
+        var pieces = display.components(separatedBy: " - ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard pieces.count > 1 else { return (display, []) }
+        var format: [String] = []
+        if let codec = stream.Codec, pieces.last?.caseInsensitiveCompare(codec) == .orderedSame {
+            pieces.removeLast()
+            if let label = codecLabel(codec) { format = [label] }
+        }
+        var name = pieces.removeFirst()
+        if !title.isEmpty, name == title, let language = pieces.first {
+            pieces.removeFirst()
+            name = language.localizedCaseInsensitiveContains(title) || title.localizedCaseInsensitiveContains(language) ? title : "\(language) (\(title))"
+        }
+        return (name, pieces + format)
+    }
+
+    private static func trimmed(_ value: String?) -> String { value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    private static func languageName(_ code: String?) -> String? {
+        guard let code = code.map({ $0.trimmingCharacters(in: .whitespaces) }), !code.isEmpty else { return nil }
+        return Locale.current.localizedString(forLanguageCode: code) ?? code
+    }
+    private static func codecLabel(_ codec: String?) -> String? {
+        guard let codec = codec?.lowercased(), !codec.isEmpty else { return nil }
+        let names = ["subrip": "SRT", "srt": "SRT", "ass": "ASS", "ssa": "SSA", "webvtt": "WebVTT", "vtt": "WebVTT",
+                     "pgssub": "PGS", "pgs": "PGS", "dvdsub": "VobSub", "dvd_subtitle": "VobSub", "dvbsub": "DVB",
+                     "mov_text": "Timed text", "aac": "AAC", "ac3": "Dolby Digital", "eac3": "Dolby Digital Plus",
+                     "truehd": "Dolby TrueHD", "dts": "DTS", "flac": "FLAC", "opus": "Opus", "mp3": "MP3"]
+        return names[codec] ?? codec.uppercased()
+    }
+}

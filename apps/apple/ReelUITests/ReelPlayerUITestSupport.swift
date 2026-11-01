@@ -54,12 +54,54 @@ import XCTest
 
     func reelPlaybackButton(_ identifier: String) -> XCUIElement {
         prepareReelPlayerControl(identifier)
-        if navigationBars["Playback options"].exists {
-            let owners = scrollViews.containing(.button, identifier: "transportPlayPause")
-                .containing(.button, identifier: "playbackSpeed").allElementsBoundByIndex.filter { $0.exists }
-            XCTAssertEqual(owners.count, 1, "The foreground options sheet must own its controls.")
-            if let owner = owners.first, owners.count == 1 { return owner.buttons[identifier].firstMatch }
+        guard navigationBars["Playback options"].exists else { return buttons[identifier].firstMatch }
+        let button = reelOptionsSheet.buttons[identifier].firstMatch
+        revealInReelOptions(button)
+        return button
+    }
+
+    /// The playback options sheet, found by its own name. SwiftUI drops rows that are scrolled out of
+    /// sight from the accessibility tree, so a search by the controls inside it can lose the sheet.
+    var reelOptionsSheet: XCUIElement {
+        let sheets = scrollViews.matching(identifier: "playerOptionsScroll").allElementsBoundByIndex.filter { $0.exists }
+        XCTAssertEqual(sheets.count, 1, "The foreground options sheet must own its controls.")
+        return sheets.first ?? scrollViews["playerOptionsScroll"]
+    }
+
+    /// One drag in the options sheet's left margin. Its content sits 20 points in from each side, so the
+    /// drag that grows the sheet to full height cannot end on a row. `up` shows what is further down.
+    func dragReelOptions(up: Bool) {
+        let bar = navigationBars["Playback options"]
+        var area = reelOptionsSheet.frame.intersection(windows.firstMatch.frame)
+        if bar.exists, bar.frame.maxY > area.minY {
+            area = CGRect(x: area.minX, y: bar.frame.maxY, width: area.width, height: max(0, area.maxY - bar.frame.maxY))
         }
-        return buttons[identifier].firstMatch
+        guard area.width > 40, area.height > 80 else {
+            XCTFail("The options sheet has no room to drag in: \(area)")
+            return
+        }
+        let x = area.minX + 8, near = area.minY + area.height * 0.3, far = area.minY + area.height * 0.8
+        let origin = coordinate(withNormalizedOffset: .zero)
+        origin.withOffset(CGVector(dx: x, dy: up ? far : near))
+            .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: x, dy: up ? near : far)))
+        XCTAssertTrue(bar.waitForExistence(timeout: 2), "A drag in the options sheet's margin must not open one of its lists.")
+    }
+
+    /// Scrolls the options sheet until `element` is wholly inside it, below the bar.
+    func revealInReelOptions(_ element: XCUIElement) {
+        for attempt in 0..<10 {
+            let bar = navigationBars["Playback options"]
+            guard bar.exists else { return }
+            let area = reelOptionsSheet.frame.intersection(windows.firstMatch.frame)
+            let top = max(area.minY, bar.frame.maxY)
+            guard element.exists else {
+                // Out of the tree, so scrolled away. It is usually further down; after five drags, look above.
+                dragReelOptions(up: attempt < 5)
+                continue
+            }
+            let frame = element.frame
+            if frame.minY >= top && frame.maxY <= area.maxY && (element.isHittable || !element.isEnabled) { return }
+            dragReelOptions(up: frame.minY >= top)
+        }
     }
 }

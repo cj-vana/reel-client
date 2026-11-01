@@ -22,6 +22,30 @@ final class AudioSelectionTests: XCTestCase {
         XCTAssertEqual(try PlaybackAudioSelection.providerIndex(selected: es, options: [en, es], source: media), 7)
         XCTAssertEqual(try PlaybackAudioSelection.optionIndex(requested: 7, options: [en, es], source: media), 1)
     }
+    func testTrackNamesKeepTheLanguageAndTitleAndMoveFormatsToTheDetail() {
+        // Tracks as a Jellyfin server describes them.
+        let english = MediaStream(Index: 2, Type: "Subtitle", DisplayTitle: "English - SUBRIP", Codec: "subrip", Language: "eng")
+        XCTAssertEqual(PlaybackTrackLabel.name(english), "English")
+        XCTAssertEqual(PlaybackTrackLabel.detail(english), "SRT")
+        let sdh = MediaStream(Index: 3, Type: "Subtitle", DisplayTitle: "SDH - English - Hearing Impaired - SUBRIP", Codec: "subrip", Language: "eng", Title: "SDH")
+        XCTAssertEqual(PlaybackTrackLabel.name(sdh), "English (SDH)")
+        XCTAssertEqual(PlaybackTrackLabel.detail(sdh), "Hearing Impaired · SRT")
+        let castilian = MediaStream(Index: 13, Type: "Subtitle", DisplayTitle: "Castilian - Spanish - SUBRIP", Codec: "subrip", Language: "spa", Title: "Castilian")
+        XCTAssertEqual(PlaybackTrackLabel.name(castilian), "Spanish (Castilian)")
+        let surround = MediaStream(Index: 1, Type: "Audio", DisplayTitle: "English - Dolby Digital+ - 5.1 - Default", Codec: "eac3", Language: "eng")
+        XCTAssertEqual(PlaybackTrackLabel.name(surround), "English")
+        XCTAssertEqual(PlaybackTrackLabel.detail(surround), "Dolby Digital+ · 5.1 · Default")
+        let commentary = MediaStream(Index: 4, Type: "Audio", DisplayTitle: "English Commentary - English - AAC - Stereo", Codec: "aac", Language: "eng", Title: "English Commentary")
+        XCTAssertEqual(PlaybackTrackLabel.name(commentary), "English Commentary", "A title that already names the language is not repeated.")
+        // A name in any other shape is shown as it is, so a custom track title is never rewritten.
+        let custom = MediaStream(Index: 3, Type: "Audio", DisplayTitle: "Español sintético 880 Hz", Codec: "aac", Language: "spa")
+        XCTAssertEqual(PlaybackTrackLabel.name(custom), "Español sintético 880 Hz")
+        XCTAssertNil(PlaybackTrackLabel.detail(custom))
+        let untitled = MediaStream(Index: 5, Type: "Audio", Codec: "flac", Title: "Director")
+        XCTAssertEqual(PlaybackTrackLabel.name(untitled), "Director")
+        XCTAssertEqual(PlaybackTrackLabel.detail(untitled), "FLAC")
+        XCTAssertEqual(PlaybackTrackLabel.name(MediaStream(Index: 6, Type: "Audio")), "Track 6")
+    }
     func testRestartingAConvertedStreamSelectsTheOneTrackTheServerWasAskedFor() {
         // Two English tracks: the new stream's one native track matches both by language, so the
         // native match refuses; the server was asked for track 2 and sends only that one.

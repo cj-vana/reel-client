@@ -106,13 +106,11 @@ import XCTest
         @MainActor func visibleButton(_ id: String) -> XCUIElement {
             app.buttons.matching(identifier: id).allElementsBoundByIndex.first(where: { $0.isHittable }) ?? app.buttons[id].firstMatch
         }
-        // Drag the sheet's own scroll view near its leading edge. On iPhone in landscape, app.swipeUp()
+        // Drag the sheet's own scroll view, in its margin. On iPhone in landscape, app.swipeUp()
         // leaves this sheet where it is, while a drag on the scroll view scrolls it.
         @MainActor func scrollOptions() {
-            let scroll = app.scrollViews["playerOptionsScroll"]
-            guard scroll.exists else { app.swipeUp(); return }
-            scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.8))
-                .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.25)))
+            guard app.scrollViews["playerOptionsScroll"].exists else { app.swipeUp(); return }
+            app.dragReelOptions(up: true)
         }
         // Now playing and Up next open the sheet, so the transport can sit below its first screen.
         for _ in 0..<4 { if visibleButton("transportPlayPause").isHittable { break }; scrollOptions() }

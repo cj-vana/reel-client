@@ -777,102 +777,156 @@ struct PlayerView: View {
 
     // MARK: Options sheet
 
+    /// The playback options sheet. What people come here for leads: the title with play and pause (the sheet
+    /// covers the picture's own controls), then subtitles and audio, then speed, sleep and chapters, then episodes.
     private var companion: some View {
-        let menuLayout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 18))
-            : AnyLayout(HStackLayout(spacing: 12))
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                    HStack(alignment: .top, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 9) {
-                            Eyebrow(text: "Now playing")
-                            Text(item.Name).font(.title2.bold()).lineLimit(2)
-                            Text(item.metadata).font(.system(size: 12)).foregroundStyle(Color.reelMuted)
-                            if playback.method == "Offline" || session.api?.recordsHistory == false {
-                                Label("History off", systemImage: "eye.slash").font(.caption)
-                                    .foregroundStyle(Color.reelMuted).accessibilityIdentifier("historyOff")
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        if let nextEpisode {
-                            VStack(alignment: .trailing, spacing: 9) {
-                                Eyebrow(text: "Up next")
-                                Text(nextEpisode.Name).font(.system(size: 14)).lineLimit(2)
-                                if !nextEpisode.episodeNumberText.isEmpty {
-                                    Text(nextEpisode.episodeNumberText).font(.system(size: 11)).foregroundStyle(Color.reelMuted).lineLimit(1)
-                                }
-                            }.frame(maxWidth: 220)
-                        }
-                    }
-                if item.Type == "Episode", playback.method != "Offline", !playback.syncPlayManaged {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 16) {
-                            Button { if let previousEpisode { playEpisode(previousEpisode) } } label: {
-                                Label("Previous", systemImage: "backward.end.fill").frame(maxWidth: .infinity, minHeight: 44)
-                            }.disabled(previousEpisode == nil || playback.preparing).accessibilityIdentifier("previousEpisode")
-                            Button { if let nextEpisode { playEpisode(nextEpisode) } } label: {
-                                Label("Next", systemImage: "forward.end.fill").frame(maxWidth: .infinity, minHeight: 44)
-                            }.disabled(nextEpisode == nil || playback.preparing).accessibilityIdentifier("nextEpisode")
-                        }.buttonStyle(.plain).font(.subheadline.weight(.semibold))
-                        Toggle("Play next episode automatically", isOn: $autoplayNextEpisode)
-                            .font(.subheadline).tint(Color.reelBlue).accessibilityIdentifier("autoplayNextEpisode")
-                        if playback.sleepDeadline != nil {
-                            Text("A sleep timer pauses automatic next episodes.").font(.footnote).foregroundStyle(Color.reelMuted)
-                        }
-                        if let episodeNavigationError {
-                            Text(episodeNavigationError).font(.footnote).foregroundStyle(Color.reelMuted)
-                            Button("Reload episodes") { Task { await loadNext() } }.accessibilityIdentifier("reloadEpisodeNavigation")
-                        }
-                    }
-                    Divider().overlay(.white.opacity(0.06))
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                nowPlayingPanel
                 PlayerStreamControls(item: item, quality: $quality)
-                Divider().overlay(.white.opacity(0.06))
-                Text("Playback tools").font(.headline)
-                optionsTransport
-                menuLayout {
-                    Menu {
-                        Picker("Playback speed", selection: Binding(get: { playback.speed }, set: { playback.speed = $0 })) {
-                            ForEach([Float(0.5), 0.75, 1, 1.25, 1.5, 2], id: \.self) { value in Text(String(format: "%g×", value)).tag(value) }
-                        }
-                    } label: { Label(String(format: "%g×", playback.speed), systemImage: "speedometer") }.disabled(preferences.rateLocked).accessibilityIdentifier("playbackSpeed")
-                    Menu {
-                        Button("Off") { playback.setSleepTimer(minutes: nil) }
-                        ForEach([15, 30, 45, 60], id: \.self) { minutes in Button("\(minutes) minutes") { playback.setSleepTimer(minutes: minutes) } }
-                    } label: { Label(playback.sleepDeadline == nil ? "Sleep timer" : "Timer on", systemImage: "moon.zzz") }.accessibilityIdentifier("sleepTimer")
-                    if let chapters = item.Chapters, !chapters.isEmpty {
-                        Menu {
-                            ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
-                                Button(chapter.Name ?? "Chapter \(index + 1)") { playback.seek(to: chapter.StartPositionTicks) }
-                            }
-                        } label: { Label("Chapters", systemImage: "list.bullet.rectangle") }.accessibilityIdentifier("playerChapters")
-                    }
-                    if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
-                }.font(.subheadline).foregroundStyle(.white).disabled(playback.syncPlayManaged)
-                if let api = session.api, playback.method != "Offline" {
-                    TrickplayScrubber(itemID: item.id, mediaSourceID: playback.currentSourceID,
-                                      duration: Double(item.RunTimeTicks ?? 0) / ticksPerSecond,
-                                      api: api, currentTime: { playback.player.currentTime().seconds },
-                                      seek: { playback.seek(to: Int64($0 * ticksPerSecond)) })
-                    if !playback.syncPlayManaged { ReceiverRoutesView(item: item, api: api, bitrate: preferences.bitrate(local: quality), mediaSourceID: playback.currentSourceID,
+                playbackChips
+                if item.Type == "Episode", playback.method != "Offline", !playback.syncPlayManaged { episodeControls }
+                if let api = session.api, playback.method != "Offline", !playback.syncPlayManaged {
+                    ReceiverRoutesView(item: item, api: api, bitrate: preferences.bitrate(local: quality), mediaSourceID: playback.currentSourceID,
                                        position: { playback.ended ? 0 : playback.player.currentTime().seconds },
                                        captureAudio: { try await playback.captureCurrentPlaybackChoices(api: api) },
                                        isCaptureCurrent: { playback.isAudioCaptureCurrent($0) },
                                        castSelection: { try playback.castSelection(from: $0) },
                                        onCastStarted: { playback.commitHandoff(from: $0) },
-                                       onReturnToLocal: { playback.resumeOnDevice(at: $0, api: api, quality: StreamQuality(rawValue: quality) ?? .original, bitrate: preferences.bitrate(local: quality)) }) }
+                                       onReturnToLocal: { playback.resumeOnDevice(at: $0, api: api, quality: StreamQuality(rawValue: quality) ?? .original, bitrate: preferences.bitrate(local: quality)) })
                 }
-                let format = PlaybackFormat.describe(source: playback.currentMediaSource, method: playback.method, audio: playback.currentAudioDisclosure)
-                Button { showingStreamInformation.toggle() } label: {
-                    HStack {
-                        Text("Stream information")
-                        Spacer()
-                        Image(systemName: showingStreamInformation ? "chevron.up" : "chevron.down").font(.caption)
-                    }.frame(minHeight: 44)
-                }.font(.subheadline).foregroundStyle(Color.reelMuted)
-                    .accessibilityValue(showingStreamInformation ? "Expanded" : "Collapsed")
-                    .accessibilityIdentifier("streamInformation")
-                if showingStreamInformation {
+                streamInformation
+            }
+            .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 24)
+        }
+        .accessibilityIdentifier("playerOptionsScroll")
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.reelBackground)
+    }
+
+    /// What is playing, play and pause with the skips, and the timeline.
+    private var nowPlayingPanel: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+        return VStack(alignment: .leading, spacing: 12) {
+            layout {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.Name).font(.headline).foregroundStyle(Color.reelText).lineLimit(2)
+                    if !nowPlayingContext.isEmpty {
+                        Text(nowPlayingContext).font(.footnote).foregroundStyle(Color.reelMuted).lineLimit(1)
+                    }
+                    if playback.method == "Offline" || session.api?.recordsHistory == false {
+                        Label("History off", systemImage: "eye.slash").font(.caption)
+                            .foregroundStyle(Color.reelMuted).accessibilityIdentifier("historyOff")
+                    }
+                }
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
+                optionsTransport
+            }
+            if let api = session.api, playback.method != "Offline" {
+                TrickplayScrubber(itemID: item.id, mediaSourceID: playback.currentSourceID,
+                                  duration: Double(item.RunTimeTicks ?? 0) / ticksPerSecond,
+                                  api: api, currentTime: { playback.player.currentTime().seconds },
+                                  seek: { playback.seek(to: Int64($0 * ticksPerSecond)) })
+            }
+        }
+        .padding(14)
+        .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// An episode's series and number; anything else, its year, rating and length.
+    private var nowPlayingContext: String {
+        guard item.Type == "Episode" else { return item.metadata }
+        return [item.SeriesName, item.episodeNumberText.isEmpty ? nil : item.episodeNumberText].compactMap { $0 }.joined(separator: "  ")
+    }
+
+    /// Speed, sleep timer and chapters, each a chip that shows its current setting.
+    private var playbackChips: some View {
+        WrapLayout(spacing: 8, lineSpacing: 8) {
+            Menu {
+                Picker("Playback speed", selection: Binding(get: { playback.speed }, set: { playback.speed = $0 })) {
+                    ForEach([Float(0.5), 0.75, 1, 1.25, 1.5, 2], id: \.self) { value in Text(String(format: "%g×", value)).tag(value) }
+                }
+            } label: { OptionChip(title: "Speed", systemImage: "gauge.with.needle", value: String(format: "%g×", playback.speed)) }
+                .disabled(preferences.rateLocked).accessibilityIdentifier("playbackSpeed")
+            Menu {
+                Button("Off") { playback.setSleepTimer(minutes: nil) }
+                ForEach([15, 30, 45, 60], id: \.self) { minutes in Button("\(minutes) minutes") { playback.setSleepTimer(minutes: minutes) } }
+            } label: { OptionChip(title: playback.sleepDeadline == nil ? "Sleep timer" : "Timer on", systemImage: "moon.zzz") }
+                .accessibilityIdentifier("sleepTimer")
+            if let chapters = item.Chapters, !chapters.isEmpty {
+                Menu {
+                    ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                        Button(chapter.Name ?? "Chapter \(index + 1)") { playback.seek(to: chapter.StartPositionTicks) }
+                    }
+                } label: { OptionChip(title: "Chapters", systemImage: "list.bullet.rectangle") }.accessibilityIdentifier("playerChapters")
+            }
+        }
+        .disabled(playback.syncPlayManaged)
+    }
+
+    /// The episodes either side of this one, and whether the next one starts by itself.
+    private var episodeControls: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+        return VStack(alignment: .leading, spacing: 10) {
+            layout {
+                episodeButton(previousEpisode, title: "Previous", systemImage: "backward.end.fill", identifier: "previousEpisode")
+                episodeButton(nextEpisode, title: "Next", systemImage: "forward.end.fill", identifier: "nextEpisode")
+            }
+            Toggle("Play next episode automatically", isOn: $autoplayNextEpisode)
+                .font(.subheadline).tint(Color.reelBlue).accessibilityIdentifier("autoplayNextEpisode")
+                .padding(.horizontal, 14).frame(minHeight: 52)
+                .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+            if playback.sleepDeadline != nil {
+                Text("A sleep timer pauses automatic next episodes.").font(.footnote).foregroundStyle(Color.reelMuted)
+            }
+            if let episodeNavigationError {
+                Text(episodeNavigationError).font(.footnote).foregroundStyle(Color.reelMuted)
+                Button("Reload episodes") { Task { await loadNext() } }.accessibilityIdentifier("reloadEpisodeNavigation")
+            }
+        }
+    }
+
+    private func episodeButton(_ episode: MediaItem?, title: String, systemImage: String, identifier: String) -> some View {
+        Button { if let episode { playEpisode(episode) } } label: {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage).font(.subheadline.weight(.semibold)).foregroundStyle(Color.reelBlue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.reelText)
+                    Text(episode.map { [$0.episodeNumberText, $0.Name].filter { !$0.isEmpty }.joined(separator: "  ") } ?? "None")
+                        .font(.caption).foregroundStyle(Color.reelMuted).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .disabled(episode == nil || playback.preparing).opacity(episode == nil ? 0.5 : 1)
+        .accessibilityLabel(title + (episode.map { ", " + $0.Name } ?? ""))
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// How the server delivers this stream, folded away until asked for.
+    @ViewBuilder private var streamInformation: some View {
+        let format = PlaybackFormat.describe(source: playback.currentMediaSource, method: playback.method, audio: playback.currentAudioDisclosure)
+        VStack(alignment: .leading, spacing: 0) {
+            Button { showingStreamInformation.toggle() } label: {
+                HStack {
+                    Text("Stream information")
+                    Spacer()
+                    Image(systemName: showingStreamInformation ? "chevron.up" : "chevron.down").font(.caption)
+                }.frame(minHeight: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).font(.subheadline).foregroundStyle(Color.reelMuted)
+                .accessibilityValue(showingStreamInformation ? "Expanded" : "Collapsed")
+                .accessibilityIdentifier("streamInformation")
+            if showingStreamInformation {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(format.source)
                     Text(format.delivery)
@@ -880,36 +934,31 @@ struct PlayerView: View {
                     if !format.warning.isEmpty { Text(format.warning) }
                 }.font(.caption).foregroundStyle(Color.reelMuted)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityElement(children: .combine).accessibilityIdentifier("playbackFormat")
-                }
-            }.padding(24)
             }
-            .accessibilityIdentifier("playerOptionsScroll")
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Color.reelBackground)
+        }
     }
 
-    /// The options sheet's transport, which tests and the managed group player address by name.
+    /// The sheet's transport, which tests and the managed group player address by name.
     private var optionsTransport: some View {
         let back = preferences.rewindSkip(), forward = preferences.forwardSkip()
-        return HStack(spacing: 30) {
-            Spacer(minLength: 0)
+        return HStack(spacing: 4) {
             Button { playback.skip(-Double(back)) } label: {
-                Image(systemName: Self.skipSymbol(forward: false, seconds: back)).font(.system(size: 25)).frame(width: 48, height: 48)
+                Image(systemName: Self.skipSymbol(forward: false, seconds: back)).font(.system(size: 20)).frame(width: 44, height: 44)
             }.accessibilityLabel("Back \(back) seconds")
             Button { playback.togglePause() } label: {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 26, weight: .semibold)).frame(width: 64, height: 64)
+                    .font(.system(size: 20, weight: .semibold)).frame(width: 50, height: 50)
                     .background(Color.reelText, in: Circle()).foregroundStyle(Color.reelBackground)
             }.accessibilityLabel(playback.isPlaying ? "Pause" : "Play").accessibilityIdentifier("transportPlayPause")
             Button { playback.skip(Double(forward)) } label: {
-                Image(systemName: Self.skipSymbol(forward: true, seconds: forward)).font(.system(size: 25)).frame(width: 48, height: 48)
+                Image(systemName: Self.skipSymbol(forward: true, seconds: forward)).font(.system(size: 20)).frame(width: 44, height: 44)
             }.accessibilityLabel("Forward \(forward) seconds")
-            Spacer(minLength: 0)
-        }.buttonStyle(.plain).disabled(playback.preparing || playback.error != nil || playback.ended)
+        }
+        .buttonStyle(.plain).foregroundStyle(Color.reelText)
+        .disabled(playback.preparing || playback.error != nil || playback.ended)
     }
 
     private func retry(original: Bool = false) { if let api = session.api { playback.retry(api: api, quality: StreamQuality(rawValue: quality) ?? .original, bitrate: original ? StreamQuality.original.rawValue : effectiveBitrate) } }
