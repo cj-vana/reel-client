@@ -14,6 +14,7 @@ struct PlayerStreamControls: View {
     @State private var audio: Int?
     @State private var subtitle: Int?
     @State private var operation: Task<Void, Never>?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var effectiveBitrate: Int { playback.currentBitrate ?? preferences.bitrate(local: quality) }
     private var qualityLabel: String {
@@ -38,12 +39,7 @@ struct PlayerStreamControls: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Picture & sound").font(.headline)
-                Spacer()
-                if busy { ProgressView().controlSize(.small).accessibilityLabel("Updating playback") }
-            }
+        VStack(alignment: .leading, spacing: 10) {
             if offline {
                 Label("Downloaded copy", systemImage: "arrow.down.circle.fill").foregroundStyle(Color.reelBlue)
                 Text("Use the video controls for audio and captions included in this download.")
@@ -52,63 +48,43 @@ struct PlayerStreamControls: View {
                 Label("Managed by your watch group", systemImage: "person.2.wave.2")
                     .font(.subheadline).foregroundStyle(Color.reelMuted)
             } else {
+                // Subtitles and audio first: they are why most people open this sheet. Each row opens its own
+                // list, which holds a long track list better than a menu and can be searched.
                 VStack(spacing: 0) {
-                    Menu {
-                        ForEach(StreamQuality.allCases) { value in
-                            Button { changeQuality(value) } label: {
-                                if effectiveBitrate == value.rawValue { Label(value.label, systemImage: "checkmark") }
-                                else { Text(value.label) }
-                            }
+                    if !subtitleTracks.isEmpty {
+                        choiceRow("Subtitles", value: subtitle == -1 ? "Off" : trackLabel(subtitle, in: subtitleTracks), icon: "captions.bubble",
+                                  identifier: "playerSubtitles", disabled: !canChange || catalogSource == nil) {
+                            StreamChoiceList(title: "Subtitles", choices: subtitleChoices)
                         }
-                    } label: { row("Quality", value: qualityLabel, icon: "slider.horizontal.3") }
-                    .accessibilityIdentifier("playerQuality").disabled(!canChange || preferences.bitrateLocked)
-                    if preferences.bitrateLocked {
-                        Text("Quality is set by your server.").font(.footnote).foregroundStyle(Color.reelMuted)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 12)
                     }
                     if !audioTracks.isEmpty {
-                        Divider().overlay(.white.opacity(0.06))
-                        Menu {
-                            Button("Server default") { change(.audio(nil)) }
-                            ForEach(audioTracks, id: \.Index) { track in
-                                Button { change(.audio(track.Index)) } label: {
-                                    if audio == track.Index { Label(trackName(track), systemImage: "checkmark") }
-                                    else { Text(trackName(track)) }
-                                }
-                            }
-                        } label: { row("Audio", value: trackLabel(audio, in: audioTracks), icon: "waveform") }
-                        .accessibilityIdentifier("playerAudio").disabled(!canChange || catalogSource == nil)
+                        if !subtitleTracks.isEmpty { rowDivider }
+                        choiceRow("Audio", value: trackLabel(audio, in: audioTracks), icon: "waveform",
+                                  identifier: "playerAudio", disabled: !canChange || catalogSource == nil) {
+                            StreamChoiceList(title: "Audio", choices: audioChoices)
+                        }
                     }
-                    if !subtitleTracks.isEmpty {
-                        Divider().overlay(.white.opacity(0.06))
-                        Menu {
-                            Button("Server default") { change(.subtitle(nil)) }
-                            Button { change(.subtitle(-1)) } label: {
-                                if subtitle == -1 { Label("Off", systemImage: "checkmark") } else { Text("Off") }
-                            }
-                            ForEach(subtitleTracks, id: \.Index) { track in
-                                Button { change(.subtitle(track.Index)) } label: {
-                                    if subtitle == track.Index { Label(trackName(track), systemImage: "checkmark") }
-                                    else { Text(trackName(track)) }
-                                }
-                            }
-                        } label: { row("Subtitles", value: subtitle == -1 ? "Off" : trackLabel(subtitle, in: subtitleTracks), icon: "captions.bubble") }
-                        .accessibilityIdentifier("playerSubtitles").disabled(!canChange || catalogSource == nil)
+                    if !audioTracks.isEmpty || !subtitleTracks.isEmpty { rowDivider }
+                    choiceRow("Quality", value: qualityLabel, icon: "tv", identifier: "playerQuality",
+                              disabled: !canChange || preferences.bitrateLocked) {
+                        StreamChoiceList(title: "Quality", choices: StreamQuality.allCases.map { value in
+                            StreamChoice(id: "quality-\(value.rawValue)", title: value.label, selected: effectiveBitrate == value.rawValue) { changeQuality(value) }
+                        })
                     }
                     if versions.count > 1 {
-                        Divider().overlay(.white.opacity(0.06))
-                        Menu {
-                            ForEach(versions, id: \.Id) { version in
-                                Button { change(.version(version.Id)) } label: {
-                                    if version.Id == playback.currentSourceID { Label(versionName(version), systemImage: "checkmark") }
-                                    else { Text(versionName(version)) }
-                                }
-                            }
-                        } label: { row("Version", value: source.map(versionName) ?? "Current version", icon: "film.stack") }
-                        .accessibilityIdentifier("playerVersion").disabled(!canChange)
+                        rowDivider
+                        choiceRow("Version", value: source.map(versionName) ?? "Current version", icon: "film.stack",
+                                  identifier: "playerVersion", disabled: !canChange) {
+                            StreamChoiceList(title: "Version", choices: versions.map { version in
+                                StreamChoice(id: "version-\(version.Id)", title: versionName(version), selected: version.Id == playback.currentSourceID) { change(.version(version.Id)) }
+                            })
+                        }
                     }
                 }
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
+                .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+                if preferences.bitrateLocked {
+                    Text("Quality is set by your server.").font(.footnote).foregroundStyle(Color.reelMuted)
+                }
                 if metadata != nil && catalogSource == nil {
                     Text("Track changes are unavailable for this stream. Use the video’s audio and subtitle controls when available.")
                         .font(.footnote).foregroundStyle(Color.reelMuted)
@@ -145,26 +121,59 @@ struct PlayerStreamControls: View {
         .onDisappear { operation?.cancel() }
     }
 
-    private func row(_ title: String, value: String, icon: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).foregroundStyle(Color.reelBlue).frame(width: 24)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(value).font(.footnote).foregroundStyle(Color.reelMuted).fixedSize(horizontal: false, vertical: true)
+    /// The row a spinner replaces the chevron of while playback changes.
+    private var firstRow: String { !subtitleTracks.isEmpty ? "playerSubtitles" : !audioTracks.isEmpty ? "playerAudio" : "playerQuality" }
+    private var rowDivider: some View { Divider().overlay(Color.reelHairline).padding(.leading, 52) }
+
+    private func choiceRow<Destination: View>(_ title: String, value: String, icon: String, identifier: String, disabled: Bool,
+                                              @ViewBuilder destination: () -> Destination) -> some View {
+        NavigationLink(destination: destination) {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.body.weight(.medium)).foregroundStyle(Color.reelBlue).frame(width: 24)
+                if dynamicTypeSize.isAccessibilitySize {
+                    // The value moves under the name, so neither has to be cut.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).font(.body.weight(.medium)).foregroundStyle(Color.reelText)
+                        Text(value).font(.subheadline).foregroundStyle(Color.reelMuted).fixedSize(horizontal: false, vertical: true)
+                    }.padding(.vertical, 8)
+                    Spacer(minLength: 8)
+                } else {
+                    Text(title).font(.body.weight(.medium)).foregroundStyle(Color.reelText)
+                    Spacer(minLength: 12)
+                    Text(value).font(.subheadline).foregroundStyle(Color.reelMuted).lineLimit(1).truncationMode(.tail)
+                }
+                if busy && identifier == firstRow {
+                    ProgressView().controlSize(.small).accessibilityLabel("Updating playback")
+                } else {
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color.reelTertiary)
+                }
             }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold)).foregroundStyle(Color.reelMuted)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .padding(.horizontal, 14).contentShape(Rectangle())
         }
-        .foregroundStyle(Color.reelText).frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(.horizontal, 14).padding(.vertical, 9).contentShape(Rectangle())
+        .buttonStyle(.plain).disabled(disabled).opacity(disabled ? 0.65 : 1)
+        .accessibilityIdentifier(identifier)
+    }
+    private var subtitleChoices: [StreamChoice] {
+        [StreamChoice(id: "subtitle-off", title: "Off", selected: subtitle == -1) { change(.subtitle(-1)) }]
+            + subtitleTracks.map { track in
+                StreamChoice(id: "subtitle-\(track.Index)", title: PlaybackTrackLabel.name(track), detail: PlaybackTrackLabel.detail(track),
+                             selected: subtitle == track.Index) { change(.subtitle(track.Index)) }
+            }
+            + [StreamChoice(id: "subtitle-default", title: "Server default", detail: "Let your server choose", selected: false) { change(.subtitle(nil)) }]
+    }
+    private var audioChoices: [StreamChoice] {
+        audioTracks.map { track in
+            StreamChoice(id: "audio-\(track.Index)", title: PlaybackTrackLabel.name(track), detail: PlaybackTrackLabel.detail(track),
+                         selected: audio == track.Index) { change(.audio(track.Index)) }
+        } + [StreamChoice(id: "audio-default", title: "Server default", detail: "Let your server choose", selected: false) { change(.audio(nil)) }]
     }
     private func uniqueTracks(_ type: String) -> [MediaStream] {
         let tracks = source?.MediaStreams?.filter { $0.Type == type && $0.Index >= 0 } ?? []
         return tracks.filter { track in tracks.filter { $0.Index == track.Index }.count == 1 }
     }
-    private func trackName(_ stream: MediaStream) -> String { stream.DisplayTitle ?? stream.Language ?? "Track \(stream.Index)" }
     private func trackLabel(_ index: Int?, in tracks: [MediaStream]) -> String {
-        tracks.first { $0.Index == index }.map(trackName) ?? "Server default"
+        tracks.first { $0.Index == index }.map(PlaybackTrackLabel.name) ?? "Server default"
     }
     private func versionName(_ source: MediaSource) -> String {
         source.Name ?? source.Container?.uppercased() ?? "Version \((versions.firstIndex { $0.Id == source.Id } ?? 0) + 1)"
@@ -223,5 +232,80 @@ struct PlayerStreamControls: View {
                 message = "That change couldn’t be applied. \(error.localizedDescription)"
             }
         }
+    }
+}
+
+/// One row of a stream choice list.
+struct StreamChoice: Identifiable {
+    let id: String
+    let title: String
+    var detail: String?
+    let selected: Bool
+    let choose: () -> Void
+}
+
+/// The choices behind a row of the options sheet: the current one checked, a search field when the list is long
+/// (a file can carry dozens of subtitle tracks), and back to the sheet once something is chosen.
+struct StreamChoiceList: View {
+    let title: String
+    let choices: [StreamChoice]
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var searchable: Bool { choices.count > 8 }
+    private var shown: [StreamChoice] {
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return choices }
+        return choices.filter { $0.title.localizedCaseInsensitiveContains(text) || ($0.detail?.localizedCaseInsensitiveContains(text) ?? false) }
+    }
+
+    var body: some View {
+        if searchable {
+            list.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search \(title.lowercased())")
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, choice in
+                        if index > 0 { Divider().overlay(Color.reelHairline).padding(.leading, 16) }
+                        Button { choice.choose(); dismiss() } label: { row(choice) }
+                            .buttonStyle(.plain).id(choice.id)
+                            .accessibilityLabel(choice.title)
+                            .accessibilityValue(choice.detail ?? "")
+                            .accessibilityAddTraits(choice.selected ? .isSelected : [])
+                    }
+                    if shown.isEmpty {
+                        Text("No matches").font(.subheadline).foregroundStyle(Color.reelMuted)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                    }
+                }
+                .background(Color.reelSurfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+                .padding(16)
+            }
+            // A long list opens on the current choice rather than the top.
+            .onAppear { if searchable, let current = choices.first(where: \.selected) { proxy.scrollTo(current.id, anchor: .center) } }
+        }
+        .background(Color.reelBackground)
+        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ choice: StreamChoice) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(choice.title).font(.body).foregroundStyle(Color.reelText).fixedSize(horizontal: false, vertical: true)
+                if let detail = choice.detail, !detail.isEmpty {
+                    Text(detail).font(.footnote).foregroundStyle(Color.reelMuted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.reelBlue).opacity(choice.selected ? 1 : 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .padding(.horizontal, 16).padding(.vertical, 6).contentShape(Rectangle())
     }
 }

@@ -49,6 +49,10 @@ struct HomeView: View {
             let lead = max(geometry.safeAreaInsets.leading, screenInsets.leading)
             let trail = max(geometry.safeAreaInsets.trailing, screenInsets.trailing)
             let full = geometry.size.width + geometry.safeAreaInsets.leading + geometry.safeAreaInsets.trailing
+            // A portrait screen with a side inset is a foldable's outer screen, whose strip holds the
+            // clock and the tab bar. Rows stop at the strip there, as on every other screen, so the
+            // clock never sits on artwork; landscape phones keep rows running to the edge.
+            let strip = geometry.size.height > geometry.size.width ? trail : 0
             Group {
                 if loading && data.isEmpty { HomeSkeleton(wide: wide, margin: margin, top: geometry.safeAreaInsets.top, height: band) }
                 else if let error, data.isEmpty {
@@ -83,14 +87,19 @@ struct HomeView: View {
                             }
                             // Rows scroll under a foldable's tab strip; each one's last card can still
                             // scroll clear of it.
-                            rows(width: geometry.size.width, margin: margin, wide: wide, lead: lead, trail: trail)
-                                .frame(width: full, alignment: .leading).clipped()
+                            rows(width: geometry.size.width, margin: margin, wide: wide, lead: lead, trail: trail - strip)
+                                .frame(width: full - strip, alignment: .leading).clipped()
                         }
                         .padding(.bottom, 36)
                     }
                     // The band runs under the navigation bar, which fills in once it scrolls away,
                     // and under the side strips.
                     .ignoresSafeArea(edges: [.top, .horizontal])
+                    // Once the bar fills in, it is one solid band from the top edge to its bottom, under
+                    // the side strip too, so no artwork shows above or beside it.
+                    .overlay(alignment: .top) {
+                        if condensed { Color.reelBackground.frame(height: geometry.safeAreaInsets.top).ignoresSafeArea(edges: [.top, .horizontal]).allowsHitTesting(false) }
+                    }
                     .scrollEdgeEffectHidden(!condensed, for: .top)
                     .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > band - 96 } action: { _, value in condensed = value }
                     .refreshable { await reload() }

@@ -22,6 +22,69 @@ final class AudioSelectionTests: XCTestCase {
         XCTAssertEqual(try PlaybackAudioSelection.providerIndex(selected: es, options: [en, es], source: media), 7)
         XCTAssertEqual(try PlaybackAudioSelection.optionIndex(requested: 7, options: [en, es], source: media), 1)
     }
+    func testTrackNamesKeepTheLanguageAndTitleAndMoveFormatsToTheDetail() {
+        // Tracks as a Jellyfin server describes them.
+        let english = MediaStream(Index: 2, Type: "Subtitle", DisplayTitle: "English - SUBRIP", Codec: "subrip", Language: "eng")
+        XCTAssertEqual(PlaybackTrackLabel.name(english), "English")
+        XCTAssertEqual(PlaybackTrackLabel.detail(english), "SRT")
+        let sdh = MediaStream(Index: 3, Type: "Subtitle", DisplayTitle: "SDH - English - Hearing Impaired - SUBRIP", Codec: "subrip", Language: "eng", Title: "SDH")
+        XCTAssertEqual(PlaybackTrackLabel.name(sdh), "English (SDH)")
+        XCTAssertEqual(PlaybackTrackLabel.detail(sdh), "Hearing Impaired · SRT")
+        let castilian = MediaStream(Index: 13, Type: "Subtitle", DisplayTitle: "Castilian - Spanish - SUBRIP", Codec: "subrip", Language: "spa", Title: "Castilian")
+        XCTAssertEqual(PlaybackTrackLabel.name(castilian), "Spanish (Castilian)")
+        let surround = MediaStream(Index: 1, Type: "Audio", DisplayTitle: "English - Dolby Digital+ - 5.1 - Default", Codec: "eac3", Language: "eng")
+        XCTAssertEqual(PlaybackTrackLabel.name(surround), "English")
+        XCTAssertEqual(PlaybackTrackLabel.detail(surround), "Dolby Digital+ · 5.1 · Default")
+        let commentary = MediaStream(Index: 4, Type: "Audio", DisplayTitle: "English Commentary - English - AAC - Stereo", Codec: "aac", Language: "eng", Title: "English Commentary")
+        XCTAssertEqual(PlaybackTrackLabel.name(commentary), "English Commentary", "A title that already names the language is not repeated.")
+        // A name in any other shape is shown as it is, so a custom track title is never rewritten.
+        let custom = MediaStream(Index: 3, Type: "Audio", DisplayTitle: "Español sintético 880 Hz", Codec: "aac", Language: "spa")
+        XCTAssertEqual(PlaybackTrackLabel.name(custom), "Español sintético 880 Hz")
+        XCTAssertNil(PlaybackTrackLabel.detail(custom))
+        let untitled = MediaStream(Index: 5, Type: "Audio", Codec: "flac", Title: "Director")
+        XCTAssertEqual(PlaybackTrackLabel.name(untitled), "Director")
+        XCTAssertEqual(PlaybackTrackLabel.detail(untitled), "FLAC")
+        XCTAssertEqual(PlaybackTrackLabel.name(MediaStream(Index: 6, Type: "Audio")), "Track 6")
+    }
+    func testRestartingAConvertedStreamSelectsTheOneTrackTheServerWasAskedFor() {
+        // Two English tracks: the new stream's one native track matches both by language, so the
+        // native match refuses; the server was asked for track 2 and sends only that one.
+        var media = source([stream(1, "eng", "English 5.1"), stream(2, "eng", "English Stereo"), stream(3, "spa")])
+        media.TranscodingUrl = "/videos/owned/master.m3u8?AudioStreamIndex=2&SubtitleMethod=Encode"
+        let single = option(nil, "en")
+        XCTAssertThrowsError(try PlaybackAudioSelection.optionIndex(requested: 2, options: [single], source: media))
+        XCTAssertEqual(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [single], source: media), 0)
+        XCTAssertEqual(PlaybackAudioSelection.servedOption(method: "DirectStream", requested: 2, options: [option(nil, nil)], source: media), 0)
+        // Direct play carries every track; several native tracks still need the native match.
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "DirectPlay", requested: 2, options: [single], source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [single, option(nil, "es")], source: media))
+        // The URL asked for another track, the native track's language conflicts, or it cannot play.
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 1, options: [single], source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [option(nil, "es")], source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [option(nil, "en", playable: false)], source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 9, options: [single], source: media))
+        // Without an audio index in the URL, the source's default must be the requested track.
+        media.TranscodingUrl = "/videos/owned/master.m3u8"; media.DefaultAudioStreamIndex = 2
+        XCTAssertEqual(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [single], source: media), 0)
+        media.DefaultAudioStreamIndex = 1
+        XCTAssertNil(PlaybackAudioSelection.servedOption(method: "Transcode", requested: 2, options: [single], source: media))
+    }
+    func testAConvertedStreamUsesTheTrackTheServerWasAskedFor() {
+        // Two English tracks: the stream's one native track matches both, so the native match refuses.
+        var media = source([stream(1, "eng", "English 5.1"), stream(2, "eng", "English Stereo"), stream(3, "spa")])
+        media.DefaultAudioStreamIndex = 1
+        let single = option(nil, "en")
+        XCTAssertThrowsError(try PlaybackAudioSelection.providerIndex(selected: single, options: [single], source: media))
+        XCTAssertEqual(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: 2, source: media), 2)
+        XCTAssertEqual(PlaybackAudioSelection.servedIndex(method: "DirectStream", nativeOptions: 1, requested: nil, source: media), 1)
+        // Direct play carries every track, and a stream with several tracks still needs the native match.
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "DirectPlay", nativeOptions: 1, requested: 2, source: media))
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 2, requested: 2, source: media))
+        // A requested index the source does not hold is never trusted.
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: 9, source: media))
+        media.DefaultAudioStreamIndex = nil
+        XCTAssertNil(PlaybackAudioSelection.servedIndex(method: "Transcode", nativeOptions: 1, requested: nil, source: media))
+    }
     func testKnownLanguageAliasesAreMatchedWithoutNames() throws {
         for (provider, native) in [("eng", "en"), ("spa", "es"), ("fre", "fr"), ("ger", "de"), ("dut", "nl"), ("chi", "zh")] {
             let selected = option(nil, native)
@@ -215,6 +278,23 @@ final class AudioSelectionTests: XCTestCase {
         var direct = source([]); direct.SupportsDirectPlay = true
         direct.TranscodingUrl = "/Videos/unused/master.m3u8?SubtitleStreamIndex=2&SubtitleMethod=Encode"
         try capturedTracks().validate(direct, negotiated: true)
+    }
+    func testOffWithJellyfinsDefaultEncodeMethodAndNoSubtitleIndexBurnsNothing() throws {
+        // Jellyfin writes its default subtitle method into every transcoding URL, also with subtitles off.
+        // Without a subtitle index, in the URL or as the source default, nothing is burned in.
+        for query in ["?SubtitleMethod=Encode", "?SubtitleStreamIndex=-1&SubtitleMethod=Encode"] {
+            for fallback in [nil, -1] as [Int?] {
+                var media = source([MediaStream(Index: 2, Type: "Subtitle", DeliveryMethod: "Hls")])
+                media.DefaultSubtitleStreamIndex = fallback
+                media.TranscodingUrl = "/Videos/owned/master.m3u8" + query
+                XCTAssertFalse(try PlaybackSubtitlePlan.encodedDelivery(source: media, selected: nil, requested: -1), query)
+                XCTAssertNoThrow(try PlaybackSubtitlePlan.validateOff(source: media), query)
+                XCTAssertNoThrow(try capturedTracks().validate(media, negotiated: true), query)
+            }
+        }
+        var media = source([]); media.DefaultSubtitleStreamIndex = 2
+        media.TranscodingUrl = "/Videos/owned/master.m3u8?SubtitleMethod=Encode"
+        XCTAssertThrowsError(try PlaybackSubtitlePlan.encodedDelivery(source: media, selected: nil, requested: -1), "A default subtitle is still burned in.")
     }
     func testSharedEncodedValueContractRetainsExactSelectionAndDeliveryConflicts() throws {
         var media = source([]); media.DefaultSubtitleStreamIndex = 2

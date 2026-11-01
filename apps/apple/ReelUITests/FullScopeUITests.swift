@@ -194,7 +194,7 @@ import Synchronization
     private func playerAwareButton(_ id: String) -> XCUIElement {
         app.prepareReelPlayerControl(id)
         if app.navigationBars["Playback options"].exists,
-           let scroll = app.scrollViews.containing(.button, identifier: "playbackSpeed")
+           let scroll = app.scrollViews.matching(identifier: "playerOptionsScroll")
             .allElementsBoundByIndex.first(where: { $0.frame.intersects(app.windows.firstMatch.frame) }),
            scroll.buttons.matching(identifier: id).count > 0 {
             let query = scroll.buttons.matching(identifier: id)

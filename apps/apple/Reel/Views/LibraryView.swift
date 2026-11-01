@@ -213,13 +213,24 @@ struct LibraryView: View {
                 // An empty search has nothing to sort or filter yet.
                 if mode == .search && !request.canLoad { EmptyView() }
                 else if parent?.Type != "Playlist" {
-                    // At the largest sizes the controls wrap, so the small ones share a row.
-                    (dynamicTypeSize.isAccessibilitySize ? AnyLayout(WrapLayout(spacing: 8, lineSpacing: 8)) : AnyLayout(HStackLayout(spacing: 8))) {
-                        sortControl.layoutPriority(1)
-                        directionControl
-                        filterControl
-                        if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
-                        viewStyleControl
+                    // One row when the sort name fits on one line beside the other controls. A narrower
+                    // column, or the largest text sizes, wraps the controls instead of breaking the name.
+                    ViewThatFits(in: .horizontal) {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            HStack(spacing: 8) {
+                                sortControl(oneLine: true)
+                                directionControl
+                                filterControl
+                                Spacer(minLength: 0)
+                                viewStyleControl
+                            }
+                        }
+                        WrapLayout(spacing: 8, lineSpacing: 8) {
+                            sortControl(oneLine: !dynamicTypeSize.isAccessibilitySize)
+                            directionControl
+                            filterControl
+                            viewStyleControl
+                        }
                     }
                 } else { viewStyleControl }
                 if dynamicTypeSize.isAccessibilitySize && request.canLoad {
@@ -261,7 +272,7 @@ struct LibraryView: View {
         }
     }
 
-    private var sortControl: some View {
+    private func sortControl(oneLine: Bool) -> some View {
         Menu {
             Picker("Sort", selection: Binding(get: { sort }, set: chooseSort)) {
                 ForEach(availableSorts) { Text(sortLabel($0)).tag($0) }
@@ -269,7 +280,7 @@ struct LibraryView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.arrow.down").font(.footnote.weight(.semibold)).foregroundStyle(Color.reelMuted)
-                Text(sortLabel(sort)).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
+                Text(sortLabel(sort)).lineLimit(oneLine ? 1 : nil).fixedSize(horizontal: oneLine, vertical: true).multilineTextAlignment(.leading)
                 Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.bold)).foregroundStyle(Color.reelTertiary)
             }.font(.subheadline.weight(.semibold)).foregroundStyle(Color.reelText).padding(.horizontal, 14)
                 .frame(minHeight: 44, alignment: .leading).background(Color.reelFill, in: Capsule()).contentShape(Capsule())

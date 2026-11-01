@@ -170,9 +170,7 @@ import Vision
     private func visible(_ element: XCUIElement, description: String) async throws {
         for _ in 0..<10 {
             if element.exists && element.isHittable { return }
-            if app.navigationBars["Playback options"].exists,
-               let options = app.scrollViews.containing(.button, identifier: "playbackSpeed")
-                .allElementsBoundByIndex.first(where: { $0.isHittable }) { options.swipeUp() }
+            if app.navigationBars["Playback options"].exists, app.scrollViews["playerOptionsScroll"].exists { app.dragReelOptions(up: true) }
             else if app.scrollViews["detailScroll"].isHittable { app.scrollViews["detailScroll"].swipeUp() }
             else if !app.keyboards.firstMatch.exists { app.swipeUp() }
             try await Task.sleep(for: .milliseconds(100))
