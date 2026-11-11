@@ -783,9 +783,16 @@ final class ReelTests: XCTestCase {
             XCTAssertEqual(stage.video, CGRect(origin: .zero, size: size))
             XCTAssertNil(stage.panel)
             XCTAssertEqual(stage.fold, fold)
-            // Held like a book the picture spans both pages, so the transport stays centered on it.
-            XCTAssertEqual(stage.transportCenter, CGPoint(x: size.width / 2, y: size.height / 2))
+            // Held like a book the transport and the timeline keep to the right-hand page.
+            let page = CGRect(x: fold.maxX, y: 0, width: size.width - fold.maxX, height: size.height)
+            XCTAssertEqual(stage.controlsPage, page, "\(size)")
+            XCTAssertEqual(stage.transportCenter, CGPoint(x: page.midX, y: page.midY))
+            XCTAssertGreaterThanOrEqual(stage.transportCenter.x - 116, fold.maxX, "the transport clears the fold")
         }
+        // A fold near the right edge leaves the left page as the only one wide enough.
+        let lopsided = PlayerStage.resolve(container: CGSize(width: 700, height: 900), divisions: [CGRect(x: 500, y: 0, width: 9, height: 900)])
+        XCTAssertEqual(lopsided.controlsPage, CGRect(x: 0, y: 0, width: 500, height: 900))
+        XCTAssertNil(PlayerStage.resolve(container: CGSize(width: 951, height: 669), divisions: []).controlsPage)
     }
 
     func testAFoldThatLeavesTooLittleRoomOrLiesOutsideIsIgnored() {

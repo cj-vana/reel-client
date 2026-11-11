@@ -40,10 +40,24 @@ struct PlayerStage: Equatable {
         return PlayerStage(posture: .flat, video: bounds)
     }
 
-    /// The transport's center: the middle of the picture. Held like a book, the picture spans
-    /// both pages and the person faces the whole screen, so the transport stays centered on it;
-    /// only the header keeps its two groups on their own pages.
-    var transportCenter: CGPoint { CGPoint(x: video.midX, y: video.midY) }
+    /// A page narrower than this cannot hold the three transport buttons with a margin.
+    static let minimumControlsPageWidth: CGFloat = 264
+
+    /// Book: the page that holds the transport and the timeline. The right-hand page, as in the
+    /// web player, unless only the left one is wide enough for the transport.
+    var controlsPage: CGRect? {
+        guard posture == .book, let fold else { return nil }
+        let left = CGRect(x: video.minX, y: video.minY, width: max(0, fold.minX - video.minX), height: video.height)
+        let right = CGRect(x: fold.maxX, y: video.minY, width: max(0, video.maxX - fold.maxX), height: video.height)
+        return right.width >= Self.minimumControlsPageWidth || right.width >= left.width ? right : left
+    }
+
+    /// The transport's center: the middle of the picture, or of the controls page when the
+    /// phone is held like a book, so no button sits on the fold.
+    var transportCenter: CGPoint {
+        let frame = controlsPage ?? video
+        return CGPoint(x: frame.midX, y: frame.midY)
+    }
 }
 
 /// The picture, drawn by an AVPlayerLayer this view owns. AVPlayerViewController exposes neither
@@ -441,7 +455,13 @@ struct PlayerView: View {
                         Spacer(minLength: 0)
                         // At the end the card under these controls offers what comes next; only the header stays.
                         if !showsEndCard {
-                            timeline.padding(.leading, leading).padding(.trailing, trailing).padding(.bottom, max(insets.bottom, 12) + 4)
+                            // Held like a book, the timeline keeps to the transport's page: a thumb
+                            // cannot scrub across the fold.
+                            let page = stage.controlsPage
+                            timeline
+                                .padding(.leading, page.map { max(leading, $0.minX + 12) } ?? leading)
+                                .padding(.trailing, page.map { max(trailing, stage.video.maxX - $0.maxX + 12) } ?? trailing)
+                                .padding(.bottom, max(insets.bottom, 12) + 4)
                         }
                     }
                     // A failed stream has nothing to play, and its message sits where the transport would.
