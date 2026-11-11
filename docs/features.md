@@ -19,6 +19,10 @@ TV layouts support directional navigation and visible focus. Phone and tablet la
 
 On iPhone Duo, open screens lay out as two pages either side of the crease. In the player, a half-open Duo stood like a laptop plays the video above the fold with the controls below it, and one held like a book keeps the controls clear of the fold.
 
+In a browser on a foldable Android phone or tablet, the web app has layouts for the narrow cover screen and for the open screen, which shows more titles in a row instead of a stretched phone page. Half folded and stood like a laptop, the video plays on the upper screen and the controls stay on the lower one. Held like a book, the title, the controls and the options each keep to one side of the fold. The half-folded layouts need a browser that reports the fold, such as Chrome.
+
+On the TV web apps, a press of Left or Right moves ten seconds and holding the key moves faster the longer it is held. The remote's Play, Pause, Stop, Rewind and Fast forward keys work during playback, and a library loads more titles as you move down it.
+
 ## Offline and installation
 
 | Capability | Availability |

@@ -21,7 +21,7 @@ import { currentTab, installNavigation, navigationVisible, restoreFocus, revealT
 import { installTVConnectionForm } from './tv-connections.ts';
 import { ReelPlayer } from './player.ts';
 import { playbackQualities, playbackSources, playbackTracks, validPlaybackSelection, selectPlaybackSource, type PlaybackSelection } from './playback-settings.ts';
-import { installPlayerPresentation, togglePlayerFullscreen, exitPlayerFullscreen, installPageCacheRecovery, restoreAfterNavigation, scrollFormatPanel, statusContainer, playerActivationAllowed, playbackTime } from './player-presentation.ts';
+import { installPlayerPresentation, togglePlayerFullscreen, exitPlayerFullscreen, installPageCacheRecovery, restoreAfterNavigation, scrollFormatPanel, statusContainer, playerActivationAllowed, playbackTime, watchPlayerPosture, remoteMediaAction, HeldSeek } from './player-presentation.ts';
 import { runtimeConfig, runtimeLayout, requestPlatformBack } from './runtime.ts';
 import { browserStorage, Connections, deviceId } from './storage.ts';
 import { DesktopLifecycle, DesktopSession, desktopAccount, desktopBridge, desktopError, uncertainDesktopError } from './desktop.ts';
@@ -134,7 +134,7 @@ const pendingMutations = new Set<string>();
 const mutationKey = (kind: string, id: string) => `${connections.revision}|${connections.activeId}|${id}|${kind}`;
 
 type HomeFocus = { id: string; action: string; shelf: string; offset: number };
-type Route = { homeFocus?: HomeFocus; name: string; item?: string; parent?: string; query?: string; filter?: string; sort?: string; library?: string; parentType?: string; intent?: 'newest-episodes'; scrollY?: number; focusId?: string; focusItem?: string; playerFocus?: 'episode-play'; focus?: BrowseFocus; clearFilters?: boolean };
+type Route = { homeFocus?: HomeFocus; name: string; item?: string; parent?: string; query?: string; filter?: string; sort?: string; library?: string; parentType?: string; intent?: 'newest-episodes'; scrollY?: number; focusId?: string; focusItem?: string; playerFocus?: 'episode-play'; focus?: BrowseFocus; clearFilters?: boolean; season?: string };
 let route: Route = { name: connections.active ? 'Home' : 'Connections' };
 const backStack: Route[] = [];
 
@@ -219,6 +219,18 @@ const formatPanel = document.querySelector<HTMLElement>('#player-format')!;
 const formatToggle = document.querySelector<HTMLButtonElement>('#format-toggle')!;
 const seekControl = document.querySelector<HTMLInputElement>('#player-seek')!;
 let scrubbing = false;
+// A half-folded phone or tablet: the browser's controls would run across the fold, so the player shows its own
+// transport on one screen. Laid flat like a laptop, the controls sit under the picture and stay in view.
+let foldedTransport = false;
+// A held key seeks further the longer it is held; a single press moves ten seconds.
+const heldSeek = new HeldSeek(skipSeconds);
+if (layout !== 'tv') watchPlayerPosture(query => window.matchMedia(query), posture => {
+  foldedTransport = posture !== 'flat';
+  if (foldedTransport) playerElement.dataset.posture = posture; else delete playerElement.dataset.posture;
+  document.querySelector<HTMLElement>('#tv-transport')!.hidden = !foldedTransport;
+  presentation.setNativeControls(!foldedTransport);
+  presentation.setPinned(posture === 'tabletop');
+});
 let panelReturnFocus: HTMLElement | null = null;
 let episodeContext: EpisodeContext | undefined;
 let episodeLoading = false, episodeError = '';
@@ -408,6 +420,8 @@ function updateTransport(): void {
   if (layout === 'tv' && formatPanel.hidden) {
     for (const [control, wasHidden] of [[skip, skipWasHidden], [next, nextWasHidden]] as const) {
       if (wasHidden === control.hidden) continue;
+      // A held seek keeps the picture in hand; the button takes focus when the key is let go.
+      if (!control.hidden && heldSeek.holding(performance.now())) continue;
       if (!control.hidden && playerElement.contains(document.activeElement)) control.focus({ preventScroll: true });
       else if (control.hidden && document.activeElement === control) video.focus({ preventScroll: true });
     }
@@ -422,8 +436,19 @@ for (const event of ['blur', 'pointercancel']) seekControl.addEventListener(even
 // TV: Left and Right on the timeline move as far as the skip buttons. The range's one-second step would take
 // hundreds of presses to cross a film.
 seekControl.addEventListener('keydown', event => {
-  if (layout !== 'tv' || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
-  event.preventDefault(); player.skip(event.key === 'ArrowLeft' ? -skipSeconds : skipSeconds);
+  if ((layout !== 'tv' && !foldedTransport) || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+  event.preventDefault(); heldSkip(event.key === 'ArrowLeft' ? -1 : 1, event.repeat);
+});
+function heldSkip(direction: -1 | 1, repeat: boolean): void {
+  const seconds = heldSeek.step(repeat, performance.now());
+  if (seconds !== undefined) player.skip(direction * seconds);
+}
+// TV: when a held seek ends on an intro or the credits, Skip intro or Next episode takes focus then.
+document.addEventListener('keyup', event => {
+  if (layout !== 'tv' || !playing || document.activeElement !== video || !formatPanel.hidden) return;
+  if (!['ArrowLeft', 'ArrowRight', 'MediaRewind', 'MediaFastForward'].includes(event.key) && event.keyCode !== 412 && event.keyCode !== 417) return;
+  const offered = [...playerElement.querySelectorAll<HTMLElement>('#player-skip-intro, #player-next-up')].find(control => !control.hidden);
+  offered?.focus({ preventScroll: true });
 });
 function showFormat(show: boolean): void {
   if (show) { cancelAutoNext(true); panelReturnFocus = document.activeElement as HTMLElement; }
@@ -732,7 +757,10 @@ async function navigate(next: Route, push = true, preserveDetail = false): Promi
       id: homeControl.dataset.id, action: homeControl.dataset.action, shelf: homeShelf?.querySelector('h2')?.textContent ?? '',
       offset: homeShelf?.querySelector<HTMLElement>('.shelf-track')?.scrollLeft ?? 0
     } : undefined;
-    route = { ...route, scrollY: window.scrollY, ...(layout === 'tv' && route.name === 'Home' ? { homeFocus } : {}), ...(browser.state ? { focus: captureBrowseFocus(content) } : {}) };
+    // A series page is reopened on the season it was left on, with the same control in hand.
+    const detailControl = route.name === 'Details' && document.activeElement instanceof HTMLElement && content.contains(document.activeElement) ? document.activeElement.closest<HTMLElement>('[data-id]') : null;
+    const detailReturn = route.name === 'Details' ? { season: selectedSeason || undefined, focusItem: detailControl?.dataset.id } : {};
+    route = { ...route, scrollY: window.scrollY, ...detailReturn, ...(layout === 'tv' && route.name === 'Home' ? { homeFocus } : {}), ...(browser.state ? { focus: captureBrowseFocus(content) } : {}) };
     backStack.push(route);
   }
   browser.close(); watchedActions.cancel(); closeBrowseReset(); searchDraft++;
@@ -779,6 +807,9 @@ function settleTVFocus(): void {
     if (content.contains(active)) revealTV(active);
     return;
   }
+  const returned = route.name === 'Details' && route.focusItem
+    ? [...content.querySelectorAll<HTMLElement>('[data-id]')].find(node => node.dataset.id === route.focusItem && node.matches('button:not([disabled]),[tabindex="0"]') && navigationVisible(node)) : undefined;
+  if (returned) { returned.focus({ preventScroll: true }); revealTV(returned); return; }
   const target = content.querySelector<HTMLElement>('.detail-intro .actions button:not([disabled]), .tv-key, .browse-results .media-card, .settings-panel select')
     ?? [...content.querySelectorAll<HTMLElement>('button:not([disabled]),select:not([disabled]),input:not([disabled]),[tabindex="0"]')].find(navigationVisible);
   target?.focus({ preventScroll: true });
@@ -1135,7 +1166,8 @@ async function details(id: string, generation: number, signal: AbortSignal): Pro
     const upcoming = readNextUp(id, signal);
     const page = await api().page(`Shows/${encodeURIComponent(id)}/Seasons`, {}, signal);
     if (isClosing() || signal.aborted || generation !== routeGeneration) return;
-    loadedSeasons = page.Items; initialSeason = loadedSeasons[0]?.Id ?? '';
+    loadedSeasons = page.Items;
+    initialSeason = (route.item === id && loadedSeasons.find(season => season.Id === route.season)?.Id) || (loadedSeasons[0]?.Id ?? '');
     if (initialSeason) {
       const page = await api().page(`Shows/${encodeURIComponent(id)}/Episodes`, { seasonId: initialSeason, isMissing: false }, signal);
       if (isClosing() || signal.aborted || generation !== routeGeneration) return;
@@ -1734,18 +1766,37 @@ document.addEventListener('keydown', event => {
   if (isClosing() || !playing || !formatPanel.hidden) return;
   // TV: the picture seeks with Left and Right and plays or pauses with OK.
   if (layout === 'tv' && event.target === video && ['playing', 'paused'].includes(playerElement.dataset.state ?? '')) {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); player.skip(event.key === 'ArrowLeft' ? -skipSeconds : skipSeconds); return; }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); heldSkip(event.key === 'ArrowLeft' ? -1 : 1, event.repeat); return; }
     if (event.key === 'Enter') { event.preventDefault(); player.toggle(); return; }
   }
   // Native video controls already handle Space; a second toggle would immediately resume.
   if (event.key === ' ' && event.target === video && video.controls) return;
-  if (event.target === video && video.controls && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+  if (event.target === video && (video.controls || foldedTransport) && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
     event.preventDefault(); player.skip(event.key === 'ArrowLeft' ? -skipSeconds : skipSeconds); return;
   }
   const interactive = (event.target as HTMLElement).closest('button,input,select,textarea,a,[contenteditable="true"]');
-  if (event.key === 'MediaPlayPause' || event.key === ' ' && !interactive) { event.preventDefault(); player.toggle(); }
-  if (event.key === 'MediaRewind') player.skip(-skipSeconds);
-  if (event.key === 'MediaFastForward') player.skip(skipSeconds);
+  const media = remoteMediaAction(event.key, event.keyCode);
+  if (media === 'toggle' || event.key === ' ' && !interactive) { event.preventDefault(); if (!event.repeat) player.toggle(); return; }
+  if (!media) return;
+  event.preventDefault();
+  if (media === 'rewind' || media === 'forward') heldSkip(media === 'rewind' ? -1 : 1, event.repeat);
+  else if (event.repeat) return;
+  else if (media === 'stop') void track(closePlayer());
+  else if ((media === 'play') === video.paused) player.toggle();
+});
+// TV: the next page of a library loads as focus reaches its last rows, so the remote never has to find a button.
+content.addEventListener('focusin', event => {
+  if (layout !== 'tv' || !browser.state || browser.state.appending) return;
+  const results = (event.target as HTMLElement).closest?.('.browse-results');
+  if (!results || !content.querySelector('[data-action="browse-more"]:not([disabled])')) return;
+  const cards = [...results.querySelectorAll<HTMLElement>('[data-browse-identity]')];
+  const index = cards.findIndex(card => card === event.target || card.contains(event.target as Node));
+  if (index < 0 || index < cards.length - 12) return;
+  // The page is drawn again when the titles arrive; the card in hand is brought fully back into view.
+  void track(browser.load('append')).then(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && content.contains(active)) revealTV(active);
+  }, () => undefined);
 });
 // Desktop shortcuts: "/" opens Search, F toggles full screen in the player.
 document.addEventListener('keydown', event => {

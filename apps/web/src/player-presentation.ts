@@ -23,6 +23,7 @@ export class PlayerControls {
   private opened = false;
   private wakeID = 0;
   private panel = false;
+  private pinned = false;
   private state: PlayerViewState = 'preparing';
   private view: ControlsView;
   private clock: Clock;
@@ -34,16 +35,18 @@ export class PlayerControls {
   close(): void { this.opened = false; this.panel = false; this.clear(); this.view.visible(false); }
   setState(state: PlayerViewState): void { this.state = state; this.wake(); }
   setPanel(open: boolean): void { this.panel = open; this.wake(); }
+  /** Pinned controls never hide: they sit beside the picture, not over it. */
+  setPinned(pinned: boolean): void { this.pinned = pinned; this.wake(); }
   wake(): void {
     this.clear(); if (!this.opened) return;
     this.view.visible(true);
     const yieldFocus = this.view.yieldFocus;
-    if (this.state !== 'playing' || this.panel || !yieldFocus && this.view.focused()) return;
+    if (this.pinned || this.state !== 'playing' || this.panel || !yieldFocus && this.view.focused()) return;
     const owner = this.wakeID;
     this.timer = this.clock.set(() => {
       if (owner !== this.wakeID) return;
       this.timer = undefined;
-      if (!this.opened || this.state !== 'playing' || this.panel) return;
+      if (!this.opened || this.pinned || this.state !== 'playing' || this.panel) return;
       if (this.view.focused()) { if (!yieldFocus) return; yieldFocus(); }
       this.view.visible(false);
     }, this.view.delay ?? 3000);
@@ -121,6 +124,12 @@ export function installPlayerPresentation(player: HTMLElement, video: HTMLVideoE
       else if (!open && panel && nativeControls !== undefined) { video.controls = nativeControls; video.tabIndex = nativeTabIndex; nativeControls = undefined; }
       panel = open; video.toggleAttribute('inert', open); screen?.toggleAttribute('inert', open); screen?.setAttribute('aria-hidden', String(open)); controls.setPanel(open);
     },
+    /** The browser's own controls on the picture. While the options panel is open they stay off and the
+        choice applies when it closes. */
+    setNativeControls(value: boolean) {
+      if (panel && nativeControls !== undefined) nativeControls = value; else video.controls = value;
+    },
+    setPinned(value: boolean) { controls.setPinned(value); },
     wake,
     dispose() {
       this.close();
@@ -130,6 +139,48 @@ export function installPlayerPresentation(player: HTMLElement, video: HTMLVideoE
       player.ownerDocument.removeEventListener('focusin', focusGuard, true);
     }
   };
+}
+
+export type RemoteMediaAction = 'toggle' | 'play' | 'pause' | 'stop' | 'forward' | 'rewind';
+/** A remote's transport keys. Older TV engines send only a key code, so both the name and the code count. */
+export function remoteMediaAction(key: string, keyCode: number): RemoteMediaAction | undefined {
+  const named: Record<string, RemoteMediaAction> = { MediaPlayPause: 'toggle', MediaPlay: 'play', MediaPause: 'pause', MediaStop: 'stop', MediaFastForward: 'forward', MediaRewind: 'rewind' };
+  const coded: Record<number, RemoteMediaAction> = { 179: 'toggle', 415: 'play', 19: 'pause', 413: 'stop', 417: 'forward', 412: 'rewind' };
+  return named[key] ?? coded[keyCode];
+}
+/** Seeking with a held remote key: steps come at a steady pace and grow the longer the key is held, so a
+    film can be crossed in seconds while a single press still moves ten. */
+export class HeldSeek {
+  private started = 0;
+  private last = -Infinity;
+  private base: number;
+  constructor(base = 10) { this.base = base; }
+  /** Seconds to move for this key event, or undefined when a repeat arrives too soon after the last step. */
+  step(repeat: boolean, now: number): number | undefined {
+    if (!repeat) { this.started = now; this.last = now; return this.base; }
+    if (now - this.last < 200) return undefined;
+    this.last = now;
+    const held = now - this.started;
+    return held < 1500 ? this.base : held < 4000 ? this.base * 3 : this.base * 6;
+  }
+  /** True while the key is still being held: a repeat arrived within the last half second. */
+  holding(now: number): boolean { return this.last !== this.started && now - this.last < 500; }
+}
+
+/** How a half-folded device is held. A device opened flat, or with no fold, reports one screen and is flat. */
+export type PlayerPosture = 'flat' | 'tabletop' | 'book';
+export function playerPosture(stacked: boolean, sideBySide: boolean): PlayerPosture {
+  return stacked ? 'tabletop' : sideBySide ? 'book' : 'flat';
+}
+interface PostureQuery { matches: boolean; addEventListener: (type: 'change', listener: () => void) => void; removeEventListener: (type: 'change', listener: () => void) => void }
+/** Follows the fold: two stacked screens are a tabletop, two side by side a book. Calls back at once and on
+    every change, and returns a function that stops listening. */
+export function watchPlayerPosture(match: (query: string) => PostureQuery, changed: (posture: PlayerPosture) => void): () => void {
+  const stacked = match('(vertical-viewport-segments: 2)'), sideBySide = match('(horizontal-viewport-segments: 2)');
+  let last: PlayerPosture | undefined;
+  const read = () => { const next = playerPosture(stacked.matches, sideBySide.matches); if (next !== last) { last = next; changed(next); } };
+  stacked.addEventListener('change', read); sideBySide.addEventListener('change', read); read();
+  return () => { stacked.removeEventListener('change', read); sideBySide.removeEventListener('change', read); };
 }
 
 export function installPageCacheRecovery(target: EventTarget, actions: { suspend: (persisted: boolean) => void; restore: () => void }): () => void {

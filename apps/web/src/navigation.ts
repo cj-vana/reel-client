@@ -209,6 +209,13 @@ export function installNavigation(onBack: () => void, scope: () => HTMLElement, 
     }
     // Up from the top of the page reaches the current tab, even while the bar is faded out.
     if (tv && direction === 'up' && active.closest('#content') && (!best || best.closest(tvBar))) best = currentTab(currentScope) ?? best;
+    // Search: Left from the first result in a row returns to the on-screen keyboard beside the results.
+    if (!best && tv && direction === 'left' && row?.matches('.browse-results')) {
+      for (const key of Array.from(currentScope.querySelectorAll<HTMLElement>('.tv-keyboard .tv-key:not([disabled])')).filter(navigationVisible)) {
+        const score = directionalScore(origin, key.getBoundingClientRect(), 'left');
+        if (score < bestScore) { bestScore = score; best = key; }
+      }
+    }
     if (!best && tv && hooks.edge?.(direction, active)) return;
     if (best) move(best);
   });
