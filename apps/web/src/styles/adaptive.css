@@ -176,6 +176,28 @@
 .player[data-posture="book"] .player-intro-notice { bottom: calc(232px + env(safe-area-inset-bottom)); }
 .player[data-posture] #tv-transport { width: min(640px, 100%); }
 
+/* Two quick taps on one side of the picture seek. The amount shows on that side for a moment. */
+.player-tap-seek {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: #0c0c0ecc;
+  color: var(--text);
+  font-size: .9375rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.player-tap-seek[hidden] { display: none; }
+.player-tap-seek[data-side="back"] { left: 22%; }
+.player-tap-seek[data-side="forward"] { left: 78%; }
+
 /* Browsing with the device held like a book: sheets, dialogs and messages open on one screen, never across
    the fold. */
 @media (horizontal-viewport-segments: 2) {

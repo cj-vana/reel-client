@@ -20,6 +20,8 @@ import { communityRating, mediaBadges } from './media-facts.ts';
 import { currentTab, installNavigation, navigationVisible, restoreFocus, revealTV } from './navigation.ts';
 import { installTVConnectionForm } from './tv-connections.ts';
 import { ReelPlayer } from './player.ts';
+import { DoubleTapSeek, ScreenWake, SystemMediaControls } from './player-system.ts';
+import { addressRoute, routeAddress, ScreenHistory } from './web-history.ts';
 import { playbackQualities, playbackSources, playbackTracks, validPlaybackSelection, selectPlaybackSource, type PlaybackSelection } from './playback-settings.ts';
 import { installPlayerPresentation, togglePlayerFullscreen, exitPlayerFullscreen, installPageCacheRecovery, restoreAfterNavigation, scrollFormatPanel, statusContainer, playerActivationAllowed, playbackTime, watchPlayerPosture, remoteMediaAction, HeldSeek } from './player-presentation.ts';
 import { runtimeConfig, runtimeLayout, requestPlatformBack } from './runtime.ts';
@@ -137,6 +139,11 @@ type HomeFocus = { id: string; action: string; shelf: string; offset: number };
 type Route = { homeFocus?: HomeFocus; name: string; item?: string; parent?: string; query?: string; filter?: string; sort?: string; library?: string; parentType?: string; intent?: 'newest-episodes'; scrollY?: number; focusId?: string; focusItem?: string; playerFocus?: 'episode-play'; focus?: BrowseFocus; clearFilters?: boolean; season?: string };
 let route: Route = { name: connections.active ? 'Home' : 'Connections' };
 const backStack: Route[] = [];
+// In a plain browser each screen has an address, so the browser's Back and Forward, a reload and a copied link
+// work. The desktop app and the TV apps have no address bar and keep their own Back.
+const screens = config.platform === 'web' && layout !== 'tv' ? new ScreenHistory(window.history, () => window.location.pathname + window.location.search) : undefined;
+// A link opened before signing in is kept for this visit and shown once an account is active.
+let pendingLink: Route | undefined;
 
 const escape = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 const selected = (value: unknown, expected: unknown): string => value === expected ? ' selected' : '';
@@ -185,7 +192,7 @@ app.innerHTML = `<div class="app-shell"><aside id="rail" aria-label="Main naviga
       <details class="playback-details" data-setting="general"><summary tabindex="0">Stream details</summary><span id="player-method" class="eyebrow"></span><div id="player-format-data" tabindex="0"></div></details></div>
       <div id="player-episodes-content" role="tabpanel" aria-labelledby="player-episodes-tab" hidden><div id="player-episode-list"></div></div>
     </section>
-    <div class="screen"><video id="video" ${layout === 'tv' ? '' : 'controls'} playsinline></video><div id="player-state" class="player-state" role="status" aria-live="polite"></div></div>
+    <div class="screen"><video id="video" ${layout === 'tv' ? '' : 'controls'} playsinline></video><div id="player-tap-seek" class="player-tap-seek" aria-hidden="true" hidden></div><div id="player-state" class="player-state" role="status" aria-live="polite"></div></div>
     <div id="player-sync" class="player-sync" role="status"></div>
     <button id="player-skip-intro" class="button quiet" data-action="skip-intro" data-player-contextual hidden>Skip intro</button>
     <button id="player-next-up" class="button quiet" data-action="play-next" data-player-contextual hidden>Next episode</button>
@@ -236,6 +243,21 @@ let episodeContext: EpisodeContext | undefined;
 let episodeLoading = false, episodeError = '';
 let extraController: AbortController | undefined, seasonController: AbortController | undefined;
 let stopPlayerArt: (() => void) | undefined, stopEndedArt: (() => void) | undefined;
+// The lock screen, headset buttons and keyboard media keys drive the same player. A TV remote's keys are read
+// as key presses instead, so the TV layout registers nothing here and no press is handled twice.
+const systemMedia = new SystemMediaControls(layout === 'tv' || !('mediaSession' in navigator) ? undefined : navigator.mediaSession, init => new MediaMetadata(init), {
+  play: () => { if (playing && video.paused) player.toggle(); },
+  pause: () => { if (playing && !video.paused) player.toggle(); },
+  stop: () => { if (playing) void track(closePlayer()); },
+  seekBy: seconds => { if (playing) player.skip(seconds); },
+  seekTo: seconds => { if (playing) player.seek(seconds); },
+  previous: () => { if (playing && previousEpisode) void track(playItem(previousEpisode.Id, true)); },
+  next: () => { if (playing && nextEpisode) void track(playItem(nextEpisode.Id, true)); }
+}, skipSeconds);
+// The screen stays on while a video plays. Browsers offer this on secure pages only.
+const screenWake = new ScreenWake('wakeLock' in navigator ? navigator.wakeLock : undefined);
+const keepScreenAwake = () => screenWake.set(playing && playerElement.dataset.state === 'playing' && !document.hidden);
+document.addEventListener('visibilitychange', keepScreenAwake);
 // The server's markers win; markers found from the audio fill in what the server does not have.
 let serverMarkers: Markers = {}, foundMarkers: Markers = {};
 let introAutoSkipped = false;
@@ -306,6 +328,7 @@ function beginAutoNext(): void {
   tick();
 }
 function closePlayerExtras(): void {
+  systemMedia.close(); screenWake.set(false); tapSeek.reset(); hideTapSeek();
   cancelAutoNext(); autoNextCancelled = false; playerTransitionPending = false; playbackChange = undefined; extraController?.abort(); seasonController?.abort(); stopPlayerArt?.(); stopPlayerArt = undefined;
   serverMarkers = {}; foundMarkers = {}; introAutoSkipped = false; hideIntroNotice();
   episodeContext = undefined; previousEpisode = undefined; nextEpisode = undefined;
@@ -318,6 +341,7 @@ function updateEpisodeControls(): void {
   playerElement.querySelector<HTMLElement>('.playback-tabs')!.hidden = !episodic && layout !== 'tv';
   playerElement.querySelector<HTMLButtonElement>('[data-action="play-previous"]')!.disabled = !previousEpisode;
   playerElement.querySelector<HTMLButtonElement>('#up-next [data-action="play-next"]')!.disabled = !nextEpisode;
+  systemMedia.setEpisodes(!!previousEpisode, !!nextEpisode);
 }
 function renderPlayerEpisodes(): void {
   stopPlayerArt?.(); stopPlayerArt = undefined;
@@ -399,6 +423,7 @@ function updateTransport(): void {
   const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
   const position = Math.max(0, Number.isFinite(video.currentTime) ? video.currentTime : 0);
   const disabled = ['preparing', 'error', 'ended'].includes(playerElement.dataset.state ?? 'preparing');
+  systemMedia.setPosition(video.duration, position, video.playbackRate);
   seekControl.disabled = disabled || duration === 0;
   seekControl.max = String(duration);
   if (!scrubbing) seekControl.value = String(Math.min(position, duration));
@@ -443,6 +468,25 @@ function heldSkip(direction: -1 | 1, repeat: boolean): void {
   const seconds = heldSeek.step(repeat, performance.now());
   if (seconds !== undefined) player.skip(direction * seconds);
 }
+// Half folded, the player draws its own controls, so two quick taps on one side of the picture seek. Each
+// further tap adds ten seconds to the total shown. Unfolded, the browser's own controls are on the picture
+// and keep whatever gestures that browser gives them.
+const tapSeek = new DoubleTapSeek();
+const tapSeekNote = document.querySelector<HTMLElement>('#player-tap-seek')!;
+let tapSeekTotal = 0, tapSeekTimer: ReturnType<typeof setTimeout> | undefined;
+function hideTapSeek(): void { if (tapSeekTimer) clearTimeout(tapSeekTimer); tapSeekTimer = undefined; tapSeekTotal = 0; tapSeekNote.hidden = true; }
+playerElement.querySelector<HTMLElement>('.screen')!.addEventListener('pointerup', event => {
+  if (!playing || !foldedTransport || event.pointerType === 'mouse' || event.target !== video || !formatPanel.hidden || !['playing', 'paused'].includes(playerElement.dataset.state ?? '')) return;
+  const box = video.getBoundingClientRect();
+  const direction = tapSeek.tap(event.clientX - box.left, event.clientY - box.top, box.width, performance.now());
+  if (!direction) return;
+  player.skip(direction * skipSeconds);
+  tapSeekTotal = Math.sign(tapSeekTotal) === direction ? tapSeekTotal + direction * skipSeconds : direction * skipSeconds;
+  tapSeekNote.textContent = Math.abs(tapSeekTotal) + (direction < 0 ? ' seconds back' : ' seconds forward');
+  tapSeekNote.dataset.side = direction < 0 ? 'back' : 'forward'; tapSeekNote.hidden = false;
+  if (tapSeekTimer) clearTimeout(tapSeekTimer);
+  tapSeekTimer = setTimeout(hideTapSeek, 900);
+});
 // TV: when a held seek ends on an intro or the credits, Skip intro or Next episode takes focus then.
 document.addEventListener('keyup', event => {
   if (layout !== 'tv' || !playing || document.activeElement !== video || !formatPanel.hidden) return;
@@ -493,6 +537,8 @@ player.onState = (state, message) => {
   if (state !== 'ended') { cancelAutoNext(); playerState.classList.remove('has-next'); stopEndedArt?.(); stopEndedArt = undefined; }
   if (state === 'error' || state === 'ended') showFormat(false);
   presentation.setState(state);
+  systemMedia.setState(state === 'playing' || state === 'buffering' ? 'playing' : state === 'paused' || state === 'ended' ? 'paused' : 'none');
+  keepScreenAwake();
   renderPictureSettings(); updateTransport();
   const transportDisabled = state === 'preparing' || state === 'error' || state === 'ended';
   playerElement.querySelectorAll<HTMLButtonElement | HTMLSelectElement>('[data-action="skip-back"],[data-action="skip-forward"],[data-action="toggle-play"],#speed,#chapters').forEach(control => { control.disabled = transportDisabled; });
@@ -749,6 +795,7 @@ async function navigate(next: Route, push = true, preserveDetail = false): Promi
   browseFiltersExpanded = next.name === route.name && ['Library', 'Search', 'Favorites', 'Music', 'Photos', 'Books'].includes(route.name)
     ? content.querySelector<HTMLDetailsElement>('#browse-filter-panel')?.open ?? browseFiltersExpanded : false;
   if (searchTimer) { clearTimeout(searchTimer); searchTimer = undefined; }
+  const earlier = backStack.length;
   if (push && (route.name !== next.name || route.item !== next.item || route.parent !== next.parent)) {
     const homeControl = layout === 'tv' && route.name === 'Home' && document.activeElement instanceof HTMLElement && content.contains(document.activeElement)
       ? document.activeElement.closest<HTMLElement>('[data-action][data-id]') : null;
@@ -772,6 +819,9 @@ async function navigate(next: Route, push = true, preserveDetail = false): Promi
   const signal = routeController.signal;
   stopArt?.(); artwork.cancelPending();
   if (!connections.active && !['Connections', 'Settings'].includes(route.name)) route = { name: 'Connections' };
+  if (connections.active) pendingLink = undefined;
+  // Signed out, the sign-in screen is the page itself and has no address of its own.
+  screens?.show(!connections.active && route.name === 'Connections' ? { name: 'Home' } : route, backStack.length > earlier);
   rail();
   if (route.name === 'Connections') { renderConnections(); window.scrollTo(0, route.scrollY ?? 0); return; }
   if (route.name === 'Settings') { renderSettings(); window.scrollTo(0, route.scrollY ?? 0); settleTVFocus(); return; }
@@ -1327,6 +1377,9 @@ async function playItem(id: string, fromStart = false): Promise<void> {
     updateEpisodeControls();
     document.querySelector('#player-title')!.textContent = item.Type === 'Episode' ? item.SeriesName ?? item.Name : item.Name;
     document.querySelector('#player-subtitle')!.textContent = subtitle(item);
+    systemMedia.open({ title: item.Name, artist: item.Type === 'Episode' ? item.SeriesName : undefined, album: item.Type === 'Episode' ? subtitle(item) : undefined });
+    // The picture is fetched with the account's sign-in and handed over as a local address, never a server one.
+    void artwork.get(api(), item, 'poster', 512).then(url => { if (generation === playingId) systemMedia.setArtwork(url, item.Name); }, () => undefined);
     nextEpisode = undefined;
     const chapters = (item.Chapters ?? []).filter(chapter => typeof chapter.StartPositionTicks === 'number' && Number.isFinite(chapter.StartPositionTicks) && chapter.StartPositionTicks >= 0);
     document.querySelector<HTMLElement>('#chapters-label')!.hidden = !chapters.length;
@@ -1435,6 +1488,7 @@ function playDownload(entry: OfflineEntry): void {
   updateEpisodeControls();
   document.querySelector('#player-title')!.textContent = entry.title;
   document.querySelector('#player-subtitle')!.textContent = entry.subtitle;
+  systemMedia.open({ title: entry.subtitle || entry.title, artist: entry.subtitle ? entry.title : undefined });
   nextEpisode = undefined;
   document.querySelector<HTMLElement>('#chapters-label')!.hidden = true; document.querySelector('#chapters')!.innerHTML = '';
   playbackGeneration = generation;
@@ -1485,7 +1539,10 @@ function applyConnectionChange(): void {
   player.reports.discard(); photoElement.hidden = true; document.querySelector('#photo-full')!.removeAttribute('src');
   content.removeAttribute('aria-hidden'); document.querySelector('#rail')!.removeAttribute('aria-hidden');
   browser.close(); browser.clearHistory(); artwork.clear(); items.clear(); detail = undefined; backStack.length = 0; updateAPI();
-  void navigate({ name: connections.active ? 'Home' : 'Connections' }, false);
+  // A link opened before signing in is shown now; without an account the address goes back to the bare page.
+  // The link is forgotten once a screen is shown for an account: a sign-in still being saved cannot move yet.
+  const linked = connections.active ? pendingLink : undefined;
+  void navigate(linked ?? { name: connections.active ? 'Home' : 'Connections' }, false);
 }
 
 /** Closes the open Details menu (Watched or Audio and subtitles). Returns false when none was open. */
@@ -1513,19 +1570,44 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.querySelector(':scope > summary')?.contains(target) && !menu.querySelector(':scope > .detail-menu-panel')?.contains(target)) closeDetailMenus(false);
 }, true);
 
-async function back(): Promise<void> {
-  if (mobileMoreOpen) { showMobileMore(false); return; }
-  if (watchedActions.plan) { if (!watchedActions.busy) await finishWatchedDialog(); return; }
-  const resetDialog = document.querySelector('#browse-reset-layer'); if (resetDialog) { closeBrowseReset(); return; }
-  if (!playing && closeDetailMenus()) return;
+/** Back first closes whatever is open over the screen: a sheet, a dialog, a menu, full screen, a photo or the
+    player. True when one was closed, or when nothing may move yet. */
+async function closeLayer(): Promise<boolean> {
+  if (mobileMoreOpen) { showMobileMore(false); return true; }
+  if (watchedActions.plan) { if (!watchedActions.busy) await finishWatchedDialog(); return true; }
+  const resetDialog = document.querySelector('#browse-reset-layer'); if (resetDialog) { closeBrowseReset(); return true; }
+  if (!playing && closeDetailMenus()) return true;
   const filterSheet = layout === 'tv' && !playing ? content.querySelector<HTMLDetailsElement>('#browse-filter-panel[open]') : null;
-  if (filterSheet) { filterSheet.open = false; filterSheet.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true }); return; }
-  if (playing && !formatPanel.hidden) { showFormat(false); return; }
-  if (isClosing() || connectionCommit || desktop?.requiresReopen) return;
-  if (replaceSavedPending) { replaceSavedPending = false; renderSavedRecovery(); document.querySelector<HTMLElement>('[data-action="request-replace-saved"]')?.focus(); return; }
-  if (document.fullscreenElement) { await document.exitFullscreen(); return; }
-  if (!photoElement.hidden) { photoElement.hidden = true; return; }
-  if (playing) { await closePlayer(); return; }
+  if (filterSheet) { filterSheet.open = false; filterSheet.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true }); return true; }
+  if (playing && !formatPanel.hidden) { showFormat(false); return true; }
+  if (isClosing() || connectionCommit || desktop?.requiresReopen) return true;
+  if (replaceSavedPending) { replaceSavedPending = false; renderSavedRecovery(); document.querySelector<HTMLElement>('[data-action="request-replace-saved"]')?.focus(); return true; }
+  if (document.fullscreenElement) { await document.exitFullscreen(); return true; }
+  if (!photoElement.hidden) { photoElement.hidden = true; return true; }
+  if (playing) { await closePlayer(); return true; }
+  return false;
+}
+// The browser's Back or Forward button, or an address typed into the bar. The browser has already moved, so a
+// move made over an open sheet or the player closes that and is undone.
+async function browserMoved(state: unknown): Promise<void> {
+  const move = screens!.moved(state, window.location.hash);
+  if (!move) return;
+  if (move.kind === 'back') {
+    if (await closeLayer()) { screens!.undo(); return; }
+    // The screens kept in memory hold where each was scrolled and what was in hand, so they are used when
+    // they are the ones the browser went back to. After a reload they are gone and the address decides.
+    const kept = backStack.length >= move.steps ? backStack[backStack.length - move.steps] : undefined;
+    if (kept && routeAddress(kept) === move.address) { backStack.length -= move.steps; await navigate(kept, false); return; }
+    backStack.length = 0;
+    if (move.route) { await navigate(move.route, false); return; }
+  } else if (playing || mobileMoreOpen || watchedActions.plan || document.querySelector('#browse-reset-layer') || isClosing() || connectionCommit) { screens!.undo(); return; }
+  else if (move.route) { await navigate(move.route); return; }
+  // An address that is not one of Reel's changes nothing; the bar is set back to the screen that is showing.
+  screens!.show(route, false);
+}
+if (screens) window.addEventListener('popstate', event => { void track(browserMoved(event.state)); });
+async function back(): Promise<void> {
+  if (await closeLayer()) return;
   // TV: at a section's top level, Back moves focus to its tab, then from a tab to Home, then exits.
   const tab = layout === 'tv' && connections.active && !backStack.length ? currentTab() : null;
   if (tab) {
@@ -1534,6 +1616,8 @@ async function back(): Promise<void> {
     if (active?.closest('#rail') && route.name !== 'Home') { await navigate({ name: 'Home' }, false); currentTab()?.focus({ preventScroll: true }); return; }
     if (active?.closest('#rail')) { requestPlatformBack(config.platform, window); return; }
   }
+  // In a browser the Back button on the page and the browser's own are the same step.
+  if (screens?.canGoBack) { screens.goBack(); return; }
   if (backStack.length) { await navigate(backStack.pop()!, false); return; }
   if (route.name !== 'Home' && connections.active) await navigate({ name: 'Home' }, false);
   else requestPlatformBack(config.platform, window);
@@ -1694,7 +1778,7 @@ app.addEventListener('submit', event => {
       setConnectionBusy(true);
       try { await connections.add(account); } catch (error) { if (!uncertainDesktopError(error)) await cleanup(); throw error; }
       finally { setConnectionBusy(false); }
-      if (!isClosing() && route.name === 'Connections') await navigate({ name: 'Home' }, false);
+      if (!isClosing() && route.name === 'Connections') await navigate(pendingLink ?? { name: 'Home' }, false);
     } catch (error) { if (recoverUncertainStore(error)) return; if (form.isConnected && !signal.aborted) document.querySelector('#connection-error')!.textContent = error instanceof Error ? error.message : 'Sign-in could not be completed.'; }
     finally { lockConnectionForm(form, false); if (form.isConnected) { button.querySelector('span')!.textContent = 'Sign in'; renderSavedRecovery(); } }
   })());
@@ -1842,6 +1926,10 @@ installPageCacheRecovery(window, {
   }
 });
 void track(desktopBrowse?.activate() ?? Promise.resolve());
+// A reload or a copied link opens on the screen its address names. Signed out, the link waits for sign-in.
+const opened = screens ? addressRoute(window.location.hash) : undefined;
+if (opened && (connections.active || ['Connections', 'Settings'].includes(opened.name))) route = opened;
+else if (opened) pendingLink = opened;
 void navigate(route, false);
 setupPWA({ platform: config.platform, production: import.meta.env.PROD, canUpdate: () => !playing && !playerTransitionPending && !connectionCommit && !connectionChangePending && !pendingMutations.size && !watchedActions.busy && !watchedActions.plan && !pendingWork.size });
 

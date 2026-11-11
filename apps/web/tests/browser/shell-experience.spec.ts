@@ -137,3 +137,50 @@ test('new destinations start at the top while Back and player Close restore the 
   await expect(page.locator('.hero h1')).toBeVisible();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
 });
+
+test('the browser Back and Forward buttons, a reload and a typed address follow the screens', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await connect(page, true);
+  await destination(page, 'Library'); await expect(page).toHaveURL(/#\/library$/);
+  await destination(page, 'Search'); await expect(page).toHaveURL(/#\/search$/);
+  await page.goBack(); await expect(page.locator('#content h1')).toHaveText('Library');
+  await page.goForward(); await expect(page.locator('#content h1')).toHaveText('Search'); await expect(page).toHaveURL(/#\/search$/);
+  // Back over an open sheet closes the sheet and stays on the screen.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'More destinations' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('dialog', { name: 'More destinations' })).toBeHidden();
+  await expect(page.locator('#content h1')).toHaveText('Search'); await expect(page).toHaveURL(/#\/search$/);
+  await page.reload(); await expect(page.locator('#content h1')).toHaveText('Search');
+  // After a reload nothing is in memory, and Back and Forward still reach each screen in order.
+  await page.goBack(); await expect(page.locator('#content h1')).toHaveText('Library'); await expect(page).toHaveURL(/#\/library$/);
+  await page.goBack(); await expect(page.locator('.hero h1')).toBeVisible(); await expect(page).not.toHaveURL(/#/);
+  await page.goForward(); await expect(page.locator('#content h1')).toHaveText('Library');
+  await page.goForward(); await expect(page.locator('#content h1')).toHaveText('Search'); await expect(page).toHaveURL(/#\/search$/);
+  // A title's address opens the title, and the page's own Back is the browser's.
+  await page.goto('/#/title/series-7'); await expect(page.locator('.detail-intro h1')).toHaveText('Out of the Blue');
+  await page.locator('#content').getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('#content h1')).toHaveText('Search'); await expect(page).toHaveURL(/#\/search$/);
+  // An address that is not one of Reel's changes nothing and is put right.
+  await page.goto('/#/title/<b>not-a-title</b>');
+  await expect(page).toHaveURL(/#\/search$/); await expect(page.locator('#content h1')).toHaveText('Search');
+  // Search text never reaches the address.
+  await page.getByRole('searchbox').fill('Out of the Blue'); await expect(page.locator('.media-card[data-id="series-7"]')).toBeVisible();
+  await expect(page).toHaveURL(/#\/search$/);
+});
+
+test('a link opened while signed out shows its title after sign-in and leaves no address behind on sign-out', async ({ page }) => {
+  await page.goto('/#/title/series-7');
+  await expect(page.getByLabel('Username', { exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/series-7/);
+  await page.getByLabel('Server address', { exact: true }).fill('http://127.0.0.1:18771');
+  await page.getByLabel('Username', { exact: true }).fill('shell-experience');
+  await page.getByLabel('Password', { exact: true }).fill('demo');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.locator('.detail-intro h1')).toHaveText('Out of the Blue'); await expect(page).toHaveURL(/#\/title\/series-7$/);
+  await destination(page, 'Servers');
+  await page.locator('#content [data-action="remove-connection"]').first().click();
+  await expect(page.getByLabel('Username', { exact: true })).toBeVisible(); await expect(page).not.toHaveURL(/#/);
+  await page.goBack();
+  await expect(page.getByLabel('Username', { exact: true })).toBeVisible(); await expect(page).not.toHaveURL(/series-7/);
+});
