@@ -42,6 +42,15 @@
 /* Phones: messages sit above the tab bar, and loading placeholders use the real grid's columns. */
 @media (max-width: 767px) {
   html:not([data-layout="tv"]) body:not(.signed-out) .toast { bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 12px); }
+  /* A message takes the width of the screen here, so a sentence is two or three lines, not a narrow column. */
+  html:not([data-layout="tv"]) .toast {
+    right: 16px;
+    left: 16px;
+    width: fit-content;
+    max-width: 520px;
+    margin-inline: auto;
+    transform: none;
+  }
   html:not([data-layout="tv"]) .loading-page .skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 10px; }
   .player-header { padding-right: max(12px, env(safe-area-inset-right)); padding-left: max(12px, env(safe-area-inset-left)); }
   #player-skip-intro, #player-next-up, .player-intro-notice { right: max(16px, env(safe-area-inset-right)); }
@@ -114,7 +123,7 @@
   background: none;
 }
 .player[data-posture="tabletop"] .player-companion {
-  top: calc(env(viewport-segment-top 0 1, 50%) + 68px);
+  top: calc(env(viewport-segment-top 0 1, 50%) + 112px);
   bottom: max(12px, env(safe-area-inset-bottom));
   align-items: center;
   justify-content: center;
@@ -132,7 +141,8 @@
 .player[data-posture="tabletop"] #player-skip-intro,
 .player[data-posture="tabletop"] #player-next-up,
 .player[data-posture="tabletop"] .player-intro-notice {
-  top: calc(env(viewport-segment-top 0 1, 50%) + 76px);
+  /* Skip intro and Next episode get their own line between the title and the transport. */
+  top: calc(env(viewport-segment-top 0 1, 50%) + 64px);
   bottom: auto;
 }
 .player[data-posture="tabletop"] .player-sync {
