@@ -1,11 +1,11 @@
 Reel Client third-party notices
 
-Runtime component: hls.js 1.7.3
+Runtime component: hls.js 1.7.4
 Upstream: https://github.com/video-dev/hls.js
 
 The web/desktop build compiles and minifies the upstream hls.js ESM bundle.
 The native-HLS TV build carries the same notices for distribution consistency.
-There are no external runtime npm dependencies declared by hls.js 1.7.3.
+There are no external runtime npm dependencies declared by hls.js 1.7.4.
 Embedded upstream attributions and their license terms are retained below.
 
 hls.js LICENSE (verbatim):
