@@ -6,7 +6,7 @@ import { projectRoot } from './source-revision.mjs';
 const read = path => readFile(resolve(projectRoot, path), 'utf8');
 const notice = await read('public/THIRD_PARTY_NOTICES.txt');
 const dependency = JSON.parse(await read('node_modules/hls.js/package.json'));
-assert.equal(dependency.version, '1.7.3');
+assert.equal(dependency.version, '1.7.4');
 assert.deepEqual(dependency.dependencies ?? {}, {});
 assert.ok(notice.includes((await read('node_modules/hls.js/LICENSE')).trim()));
 for (const file of ['utf8-utils.ts', 'vttcue.ts', 'cea-608-parser.ts']) {
