@@ -80,6 +80,8 @@ struct LibraryView: View {
         GeometryReader { geometry in
             // One margin for the rail, the controls and the grid, so every row starts on the same edge.
             let margin = AdaptiveLayout.margin(regular: horizontalSizeClass == .regular, width: geometry.size.width)
+            // The two pages of an open foldable; the grid fills each and leaves the crease as its gutter.
+            let spread = FoldSpread(crease: foldCrease, in: geometry.frame(in: .global))
             ScrollViewReader { scroll in
                 if dynamicTypeSize.isAccessibilitySize || geometry.size.height < 400 {
                     VStack(alignment: .leading, spacing: 16) {
@@ -89,10 +91,10 @@ struct LibraryView: View {
                                 libraryControls(margin: margin).id(ScrollAnchor.top)
                                 refreshFailureView(margin: margin)
                                 if items.isEmpty {
-                                    emptyState(width: geometry.size.width, margin: margin).fixedSize(horizontal: false, vertical: true)
+                                    emptyState(width: geometry.size.width, margin: margin, spread: spread).fixedSize(horizontal: false, vertical: true)
                                         .frame(minHeight: max(240, geometry.size.height * 0.4))
                                 } else {
-                                    listingContent(availableWidth: geometry.size.width, margin: margin, scroll: scroll)
+                                    listingContent(availableWidth: geometry.size.width, margin: margin, spread: spread, scroll: scroll)
                                 }
                             }.padding(.bottom, 24)
                         }.accessibilityIdentifier("libraryScroll")
@@ -105,12 +107,11 @@ struct LibraryView: View {
                             Color.clear.frame(height: 1).id(ScrollAnchor.top)
                             refreshFailureView(margin: margin)
                             if items.isEmpty {
-                                emptyState(width: geometry.size.width, margin: margin,
-                                           page: FoldSpread(crease: foldCrease, in: geometry.frame(in: .global))?.leadingWidth)
+                                emptyState(width: geometry.size.width, margin: margin, page: spread?.leadingWidth, spread: spread)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(minHeight: max(240, geometry.size.height * 0.4))
                             } else {
-                                listingContent(availableWidth: geometry.size.width, margin: margin, scroll: scroll)
+                                listingContent(availableWidth: geometry.size.width, margin: margin, spread: spread, scroll: scroll)
                             }
                         }.accessibilityIdentifier("libraryScroll")
                     }
@@ -347,12 +348,12 @@ struct LibraryView: View {
     }
 
     /// `page` is the left page's width on an open foldable: a message keeps to it, clear of the crease.
-    @ViewBuilder private func emptyState(width: CGFloat, margin: CGFloat, page: CGFloat? = nil) -> some View {
+    @ViewBuilder private func emptyState(width: CGFloat, margin: CGFloat, page: CGFloat? = nil, spread: FoldSpread? = nil) -> some View {
         if preparedContext != scopeIdentity, request.canLoad {
-            if optionsLoading { loadingPlaceholder("Checking saved filters…", availableWidth: width, margin: margin) }
+            if optionsLoading { loadingPlaceholder("Checking saved filters…", availableWidth: width, margin: margin, spread: spread) }
             else { ContentUnavailableView("Check your saved filters", systemImage: "line.3.horizontal.decrease", description: Text("Retry the filter choices or use an unfiltered view before loading this collection.")) }
         }
-        else if loading { loadingPlaceholder("Finding your titles…", availableWidth: width, margin: margin) }
+        else if loading { loadingPlaceholder("Finding your titles…", availableWidth: width, margin: margin, spread: spread) }
         else {
             Group {
                 if let error { FailureView(message: error) { Task { await load(reset: true) } } }
@@ -366,26 +367,23 @@ struct LibraryView: View {
         }
     }
 
+    /// Rows instead of posters: the list view, and every view at accessibility text sizes.
+    private var showsRows: Bool { dynamicTypeSize.isAccessibilitySize || viewStyle == .list }
+
     /// Grid columns from the width: as many posters as fit at the minimum width, never fewer than two.
-    private func gridMetrics(availableWidth: CGFloat, margin: CGFloat) -> (count: Int, width: CGFloat) {
-        let content = availableWidth - 2 * margin
-        let minimum: CGFloat = horizontalSizeClass == .regular ? 160 : 150
-        let count = dynamicTypeSize.isAccessibilitySize || viewStyle == .list ? 1
-            : max(2, Int((content + Self.gridSpacing) / (minimum + Self.gridSpacing)))
-        return (count, max(80, (content - CGFloat(count - 1) * Self.gridSpacing) / CGFloat(count)))
+    /// On an open foldable each page gets its own columns, so nothing sits on the crease.
+    private func gridMetrics(availableWidth: CGFloat, margin: CGFloat, spread: FoldSpread?) -> PosterGrid {
+        PosterGrid.resolve(availableWidth: availableWidth, margin: margin, minimum: horizontalSizeClass == .regular ? 160 : 150,
+                           spacing: Self.gridSpacing, single: showsRows, spread: spread)
     }
     private static let gridSpacing: CGFloat = 16
 
-    private func gridColumns(_ count: Int) -> [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: Self.gridSpacing, alignment: .top), count: count)
-    }
-
     /// Shaped like the grid or list it stands in for, so nothing jumps when titles arrive.
-    private func loadingPlaceholder(_ label: String, availableWidth: CGFloat, margin: CGFloat) -> some View {
-        let grid = gridMetrics(availableWidth: availableWidth, margin: margin)
-        let list = grid.count == 1
-        return LazyVGrid(columns: gridColumns(grid.count), alignment: .leading, spacing: list ? 16 : 24) {
-            ForEach(0..<(list ? 5 : grid.count * 2), id: \.self) { _ in
+    private func loadingPlaceholder(_ label: String, availableWidth: CGFloat, margin: CGFloat, spread: FoldSpread?) -> some View {
+        let grid = gridMetrics(availableWidth: availableWidth, margin: margin, spread: spread)
+        let list = showsRows
+        return LazyVGrid(columns: grid.columns(spacing: Self.gridSpacing), alignment: .leading, spacing: list ? 16 : 24) {
+            ForEach(0..<(list ? 5 * grid.count : grid.count * 2), id: \.self) { _ in
                 if list {
                     (dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 16))) {
                         RoundedRectangle(cornerRadius: ReelRadius.artwork).fill(Color.reelSurface).frame(width: 88, height: 132)
@@ -407,10 +405,10 @@ struct LibraryView: View {
         .accessibilityElement().accessibilityLabel(label)
     }
 
-    private func listingContent(availableWidth: CGFloat, margin: CGFloat, scroll: ScrollViewProxy) -> some View {
-        let grid = gridMetrics(availableWidth: availableWidth, margin: margin)
+    private func listingContent(availableWidth: CGFloat, margin: CGFloat, spread: FoldSpread?, scroll: ScrollViewProxy) -> some View {
+        let grid = gridMetrics(availableWidth: availableWidth, margin: margin, spread: spread)
         return VStack(spacing: 0) {
-            LazyVGrid(columns: gridColumns(grid.count), alignment: .leading, spacing: grid.count == 1 ? 16 : 24) {
+            LazyVGrid(columns: grid.columns(spacing: Self.gridSpacing), alignment: .leading, spacing: showsRows ? 16 : 24) {
                 ForEach(items, id: \.listingID) { item in
                     NavigationLink {
                         if item.isContainer { LibraryView(mode: .library, parent: item) }

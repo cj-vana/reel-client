@@ -1,0 +1,216 @@
+/* Screens between the main layouts: fold cover screens, open folds, landscape phones and half-folded
+   devices. Every rule here narrows a layout the other files already chose; none applies to TV. */
+
+/* Mobile browsers change the viewport height as their toolbars move. Where dynamic units exist, full-height
+   surfaces follow the visible height; older engines keep the vh values. */
+@supports (height: 100dvh) {
+  html:not([data-layout="tv"]) body,
+  html:not([data-layout="tv"]) .app-shell,
+  html:not([data-layout="tv"]) #content { min-height: 100dvh; }
+  html:not([data-layout="tv"]) .browse-modal { max-height: calc(100dvh - 48px); }
+}
+
+/* A landscape phone gets the icon rail. The rail and the page keep clear of the camera side. */
+@media (min-width: 768px) {
+  html:not([data-layout="tv"]) body:not(.signed-out) #rail,
+  html[data-rail="collapsed"]:not([data-layout="tv"]) body:not(.signed-out) #rail {
+    width: calc(var(--rail) + env(safe-area-inset-left));
+    padding-left: calc(12px + env(safe-area-inset-left));
+  }
+  html:not([data-layout="tv"]) body:not(.signed-out) #content {
+    margin-left: calc(var(--rail) + env(safe-area-inset-left));
+    padding-right: env(safe-area-inset-right);
+  }
+}
+/* On a short screen Home's feature leaves the first row's heading in view instead of running past the fold
+   of the page. */
+@media (min-width: 768px) and (max-height: 500px) {
+  html:not([data-layout="tv"]) .hero-stage { height: calc(100vh - 56px); min-height: 280px; }
+  html:not([data-layout="tv"]) .hero-content { bottom: 76px; }
+  html:not([data-layout="tv"]) .hero-content h1 { font-size: 2.25rem; }
+  html:not([data-layout="tv"]) .hero-overview { -webkit-line-clamp: 2; }
+  html:not([data-layout="tv"]) .hero-content .actions { margin-top: 14px; }
+  html:not([data-layout="tv"]) .feature-selector { display: none; }
+  html:not([data-layout="tv"]) .detail-hero { min-height: 100vh; }
+}
+@supports (height: 100dvh) {
+  @media (min-width: 768px) and (max-height: 500px) {
+    html:not([data-layout="tv"]) .hero-stage { height: calc(100dvh - 56px); }
+  }
+}
+
+/* Phones: messages sit above the tab bar, and loading placeholders use the real grid's columns. */
+@media (max-width: 767px) {
+  html:not([data-layout="tv"]) body:not(.signed-out) .toast { bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 12px); }
+  /* A message takes the width of the screen here, so a sentence is two or three lines, not a narrow column. */
+  html:not([data-layout="tv"]) .toast {
+    right: 16px;
+    left: 16px;
+    width: fit-content;
+    max-width: 520px;
+    margin-inline: auto;
+    transform: none;
+  }
+  html:not([data-layout="tv"]) .loading-page .skeleton-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 10px; }
+  .player-header { padding-right: max(12px, env(safe-area-inset-right)); padding-left: max(12px, env(safe-area-inset-left)); }
+  #player-skip-intro, #player-next-up, .player-intro-notice { right: max(16px, env(safe-area-inset-right)); }
+}
+@media (max-height: 500px) {
+  .player-companion { bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .player-format { right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
+  #player-skip-intro, #player-next-up, .player-intro-notice { bottom: calc(112px + env(safe-area-inset-bottom)); }
+}
+.player-sync { right: max(16px, env(safe-area-inset-right)); left: max(16px, env(safe-area-inset-left)); }
+
+/* Cover screens and other narrow phones. */
+@media (max-width: 359px) {
+  html:not([data-layout="tv"]) .browse-modal-backdrop { padding: 16px; }
+  html:not([data-layout="tv"]) .browse-modal { padding: 20px; }
+  html:not([data-layout="tv"]) .browse-modal .button { white-space: normal; }
+  html:not([data-layout="tv"]) .detail-intro .actions .button.glass,
+  html:not([data-layout="tv"]) .detail-intro .actions .detail-menu { min-width: 48px; }
+  html:not([data-layout="tv"]) .shelf-track .media-card { width: calc((100% - 2 * var(--row-gap)) / 2.2); }
+}
+
+/* An open fold or a small tablet in portrait: still the tab bar, but the page is laid out for the width it
+   has. More titles per row, a shorter feature, and buttons and sheets that keep a hand-sized width. */
+@media (min-width: 600px) and (max-width: 767px) {
+  html:not([data-layout="tv"]) { --gutter: 24px; }
+  html:not([data-layout="tv"]) .hero-stage { min-height: clamp(340px, 52vh, 460px); }
+  html:not([data-layout="tv"]) .hero-content h1 { font-size: 2.25rem; }
+  /* The summary shows here, so the left of the picture gets the deeper shade the text needs. */
+  html:not([data-layout="tv"]) .hero-shade {
+    background:
+      linear-gradient(180deg, #0c0c0e8c 0%, #0c0c0e00 20%, #0c0c0e00 34%, #0c0c0ea6 66%, #0c0c0e 100%),
+      linear-gradient(90deg, #0c0c0ed9 0%, #0c0c0e8c 44%, #0c0c0e00 78%);
+  }
+  html:not([data-layout="tv"]) .hero-overview { display: -webkit-box; max-width: 46ch; margin-top: 10px; font-size: .9375rem; -webkit-line-clamp: 2; }
+  html:not([data-layout="tv"]) .hero-content .actions .button { flex: 0 1 200px; }
+  html:not([data-layout="tv"]) .feature-selector { max-width: 420px; }
+  html:not([data-layout="tv"]) .shelf-track .media-card { width: calc((100% - 4 * var(--row-gap)) / 4.4); }
+  html:not([data-layout="tv"]) .shelf-track .media-card.wide-card { width: calc((100% - 2 * var(--row-gap)) / 2.4); }
+  html:not([data-layout="tv"]) .browse-grid,
+  html:not([data-layout="tv"]) .loading-page .skeleton-grid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 22px 12px; }
+  html:not([data-layout="tv"]) .browse-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  html:not([data-layout="tv"]) .detail-hero > .artwork::before,
+  html:not([data-layout="tv"]) .detail-shade { padding-top: 46%; }
+  html:not([data-layout="tv"]) .detail-intro h1 { font-size: 2.25rem; }
+  html:not([data-layout="tv"]) .detail-overview { max-width: 62ch; }
+  html:not([data-layout="tv"]) .detail-intro .actions { align-items: center; gap: 8px; }
+  html:not([data-layout="tv"]) .detail-intro .actions .primary { flex: 0 1 240px; margin: 0 8px 0 0; }
+  html:not([data-layout="tv"]) .detail-intro .actions .button.glass,
+  html:not([data-layout="tv"]) .detail-intro .actions .detail-menu { flex: 0 0 auto; min-width: 76px; }
+  html:not([data-layout="tv"]) .episode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
+  html:not([data-layout="tv"]) .episode-main { grid-template-columns: 120px minmax(0, 1fr); }
+  html:not([data-layout="tv"]) .settings-grid,
+  html:not([data-layout="tv"]) .channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* Sheets open beside the thumb that asked for them. */
+  html:not([data-layout="tv"]) .mobile-more-menu,
+  html:not([data-layout="tv"]) .detail-menu-panel,
+  html:not([data-layout="tv"]) .browse-bar .browse-selection-bar { left: auto; width: min(400px, calc(100% - 16px)); }
+  .player-format { left: auto; width: min(420px, calc(100% - 16px)); }
+}
+
+/* Half folded and laid flat: the picture fills the upper screen and every control moves to the lower one,
+   where it stays in view. */
+.player[data-posture="tabletop"] .screen { bottom: auto; height: env(viewport-segment-bottom 0 0, 50%); }
+.player[data-posture="tabletop"] .player-header {
+  top: env(viewport-segment-top 0 1, 50%);
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background: none;
+}
+.player[data-posture="tabletop"] .player-companion {
+  top: calc(env(viewport-segment-top 0 1, 50%) + 112px);
+  bottom: max(12px, env(safe-area-inset-bottom));
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-height: none;
+}
+.player[data-posture="tabletop"] .player-format {
+  top: calc(env(viewport-segment-top 0 1, 50%) + 8px);
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: max(8px, env(safe-area-inset-left));
+  width: auto;
+  max-height: none;
+}
+.player[data-posture="tabletop"] #player-skip-intro,
+.player[data-posture="tabletop"] #player-next-up,
+.player[data-posture="tabletop"] .player-intro-notice {
+  /* Skip intro and Next episode get their own line between the title and the transport. */
+  top: calc(env(viewport-segment-top 0 1, 50%) + 64px);
+  bottom: auto;
+}
+.player[data-posture="tabletop"] .player-sync {
+  top: calc(env(viewport-segment-bottom 0 0, 50%) - 52px);
+  bottom: auto;
+}
+.player[data-posture="tabletop"][data-controls="hidden"] { cursor: auto; }
+
+/* Half folded and held like a book: the picture spans both screens, and the title, the transport, the
+   options and any message each keep to one side of the fold. */
+.player[data-posture="book"] .player-heading { flex: 0 1 auto; max-width: calc(env(viewport-segment-right 0 0, 50%) - 96px); }
+.player[data-posture="book"] .player-header-actions { margin-left: auto; }
+.player[data-posture="book"] .player-companion {
+  left: calc(env(viewport-segment-left 1 0, 50%) + 16px);
+  bottom: max(16px, env(safe-area-inset-bottom));
+  align-items: stretch;
+}
+.player[data-posture="book"] #up-next { align-self: flex-end; }
+.player[data-posture="book"] .player-format {
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: calc(env(viewport-segment-left 1 0, 50%) + 8px);
+  width: auto;
+  max-height: none;
+}
+.player[data-posture="book"] .player-state { padding-right: calc(100% - env(viewport-segment-right 0 0, 50%) + 24px); }
+.player[data-posture="book"] .player-sync { left: calc(env(viewport-segment-left 1 0, 50%) + 16px); }
+.player[data-posture="book"] #player-skip-intro,
+.player[data-posture="book"] #player-next-up,
+.player[data-posture="book"] .player-intro-notice { bottom: calc(232px + env(safe-area-inset-bottom)); }
+.player[data-posture] #tv-transport { width: min(640px, 100%); }
+
+/* Two quick taps on one side of the picture seek. The amount shows on that side for a moment. */
+.player-tap-seek {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: #0c0c0ecc;
+  color: var(--text);
+  font-size: .9375rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.player-tap-seek[hidden] { display: none; }
+.player-tap-seek[data-side="back"] { left: 22%; }
+.player-tap-seek[data-side="forward"] { left: 78%; }
+
+/* Browsing with the device held like a book: sheets, dialogs and messages open on one screen, never across
+   the fold. */
+@media (horizontal-viewport-segments: 2) {
+  html:not([data-layout="tv"]) .mobile-more-menu,
+  html:not([data-layout="tv"]) .detail-menu-panel,
+  html:not([data-layout="tv"]) .browse-bar .browse-selection-bar {
+    left: calc(env(viewport-segment-left 1 0, 50%) + 8px);
+    width: auto;
+  }
+  html:not([data-layout="tv"]) .browse-modal-backdrop { padding-right: calc(100% - env(viewport-segment-right 0 0, 50%) + 24px); }
+  html:not([data-layout="tv"]) .toast {
+    left: calc(env(viewport-segment-left 1 0, 50%) + 16px);
+    max-width: calc(env(viewport-segment-width 1 0, 50%) - 32px);
+    transform: none;
+  }
+}

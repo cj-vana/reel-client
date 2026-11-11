@@ -309,7 +309,9 @@ test('automatic next episode has a cancellable countdown and then starts the cor
 test('auto-play preference persists and closing a countdown cannot start another episode', async ({ page }) => {
   await connect(page, 'auto-persistence', false, true); await startEpisode(page); await options(page).click();
   await page.getByLabel('Auto-play next episode', { exact: true }).uncheck(); await closeOptions(page).click();
-  await page.reload(); await expect(page.locator('.hero h1')).toBeVisible(); await startEpisode(page);
+  // A reload comes back to the series page the episode was opened from.
+  await page.reload(); await expect(page.locator('.detail-intro h1')).toBeVisible();
+  await page.locator('#rail').getByRole('button', { name: 'Home', exact: true }).click(); await expect(page.locator('.hero h1')).toBeVisible(); await startEpisode(page);
   await options(page).click(); await expect(page.getByLabel('Auto-play next episode', { exact: true })).not.toBeChecked();
   await closeOptions(page).click(); await finishEpisode(page); await expect(page.locator('#autoplay-countdown')).toBeHidden();
   await page.getByRole('button', { name: 'Play again', exact: true }).click();

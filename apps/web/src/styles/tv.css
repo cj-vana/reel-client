@@ -989,3 +989,20 @@ html[data-layout="tv"] .detail-intro .actions .detail-menu-panel .button:focus-v
   html[data-layout="tv"] .episode-main:focus-visible,
   html[data-layout="tv"] .player-episode-choice:focus-visible { transform: none; }
 }
+
+/* Read from the couch: the smallest labels take one step up, and messages sit inside the safe area. */
+html[data-layout="tv"] .badge { min-height: 1.4rem; font-size: .8rem; }
+html[data-layout="tv"] .media-card small,
+html[data-layout="tv"] .browse-card .browse-subtitle,
+html[data-layout="tv"] .browse-card small,
+html[data-layout="tv"] .button-detail,
+html[data-layout="tv"] .episode-copy small,
+html[data-layout="tv"] .episode-copy p,
+html[data-layout="tv"] .player-episode-choice small { font-size: .9rem; }
+html[data-layout="tv"] .toast {
+  bottom: calc(var(--safe-y) + .5rem);
+  max-width: 36rem;
+  padding: .75rem 1.25rem;
+  border-radius: .75rem;
+  font-size: 1rem;
+}

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
-import { playbackTime, PlayerControls, installPlayerPresentation, togglePlayerFullscreen, exitPlayerFullscreen, nativeVideoFullscreen, installPageCacheRecovery, restoreAfterNavigation, scrollFormatPanel, statusContainer, playerActivationAllowed } from '../src/player-presentation.ts';
+import { playbackTime, PlayerControls, installPlayerPresentation, togglePlayerFullscreen, exitPlayerFullscreen, nativeVideoFullscreen, installPageCacheRecovery, restoreAfterNavigation, scrollFormatPanel, statusContainer, playerActivationAllowed, playerPosture, watchPlayerPosture, remoteMediaAction, HeldSeek } from '../src/player-presentation.ts';
 import { installNavigation, navigationVisible } from '../src/navigation.ts';
 
 function clock() {
@@ -158,4 +158,58 @@ test('action status is inside active fullscreen player and outside a closed play
 
 test('timeline clock labels handle unloaded, negative, fractional and hour-long video', () => {
   for (const [value, label] of [[NaN, '0:00'], [Infinity, '0:00'], [-2, '0:00'], [5.9, '0:05'], [125, '2:05'], [3600, '1:00:00'], [3725, '1:02:05']] as const) assert.equal(playbackTime(value), label);
+});
+
+test('remote transport keys are read by name or by key code, and other keys are left alone', () => {
+  for (const [key, code, action] of [['MediaPlayPause', 0, 'toggle'], ['Unidentified', 179, 'toggle'], ['MediaPlay', 0, 'play'], ['Unidentified', 415, 'play'], ['MediaPause', 0, 'pause'], ['Pause', 19, 'pause'],
+    ['MediaStop', 0, 'stop'], ['Unidentified', 413, 'stop'], ['MediaFastForward', 0, 'forward'], ['Unidentified', 417, 'forward'], ['MediaRewind', 0, 'rewind'], ['Unidentified', 412, 'rewind']] as const) assert.equal(remoteMediaAction(key, code), action);
+  for (const [key, code] of [['Enter', 13], ['ArrowLeft', 37], [' ', 32], ['Unidentified', 461], ['a', 65]] as const) assert.equal(remoteMediaAction(key, code), undefined);
+});
+test('a held seek key steps at a steady pace and grows from ten seconds to thirty to sixty', () => {
+  const held = new HeldSeek(10);
+  assert.equal(held.step(false, 1000), 10);
+  assert.equal(held.step(true, 1100), undefined); assert.equal(held.step(true, 1199), undefined);
+  assert.equal(held.step(true, 1200), 10); assert.equal(held.step(true, 1300), undefined); assert.equal(held.step(true, 1400), 10);
+  assert.equal(held.step(true, 2600), 30); assert.equal(held.step(true, 4900), 30);
+  assert.equal(held.step(true, 5100), 60);
+  assert.equal(held.step(false, 5150), 10, 'a new press starts again at ten seconds');
+  assert.equal(held.step(true, 5400), 10);
+});
+test('pinned controls stay up during playback and hide again once unpinned', () => {
+  const h = controls(); h.view.open(); h.view.setPinned(true); h.view.setState('playing');
+  assert.equal(h.timer.pending.size, 0); assert.equal(h.values.at(-1), true);
+  h.view.setPinned(false); assert.equal(h.timer.pending.size, 1); h.timer.fire(); assert.equal(h.values.at(-1), false);
+});
+test('a queued idle callback cannot hide controls that were pinned after it was set', () => {
+  const h = controls(); h.view.open(); h.view.setState('playing'); const old = [...h.timer.pending.values()][0];
+  h.view.setPinned(true); old(); assert.equal(h.values.at(-1), true); h.view.close();
+});
+test('stacked screens are a tabletop, side by side a book, and one screen is flat', () => {
+  assert.equal(playerPosture(false, false), 'flat'); assert.equal(playerPosture(true, false), 'tabletop');
+  assert.equal(playerPosture(false, true), 'book'); assert.equal(playerPosture(true, true), 'tabletop');
+});
+test('the posture watcher reports once at start, on each real change, and not after it stops', () => {
+  const queries = new Map<string, { matches: boolean; listeners: Set<() => void> }>();
+  const match = (query: string) => {
+    const entry = { matches: false, listeners: new Set<() => void>() }; queries.set(query, entry);
+    return { get matches() { return entry.matches; }, addEventListener: (_: 'change', listener: () => void) => { entry.listeners.add(listener); }, removeEventListener: (_: 'change', listener: () => void) => { entry.listeners.delete(listener); } };
+  };
+  const seen: string[] = [], stop = watchPlayerPosture(match, posture => seen.push(posture));
+  const set = (query: string, value: boolean) => { const entry = queries.get(query)!; entry.matches = value; for (const listener of [...entry.listeners]) listener(); };
+  assert.deepEqual(seen, ['flat']);
+  set('(vertical-viewport-segments: 2)', true); set('(vertical-viewport-segments: 2)', true); assert.deepEqual(seen, ['flat', 'tabletop']);
+  set('(vertical-viewport-segments: 2)', false); set('(horizontal-viewport-segments: 2)', true); assert.deepEqual(seen, ['flat', 'tabletop', 'flat', 'book']);
+  stop(); set('(horizontal-viewport-segments: 2)', false); assert.equal(seen.length, 4);
+});
+test('the fold transport turns the native controls off now, or when an open options panel closes', () => {
+  const h = dom(), screen = new ElementFixture('DIV', h.doc); screen.parent = h.player; h.video.parent = screen;
+  h.player.querySelector = (selector: string) => selector === '.screen' ? screen : null;
+  const view = installPlayerPresentation(h.player as any, h.video as any, [h.background as any]); view.open();
+  view.setNativeControls(false); assert.equal(h.video.controls, false);
+  view.setNativeControls(true); assert.equal(h.video.controls, true);
+  view.setPanel(true); assert.equal(h.video.controls, false);
+  view.setNativeControls(false); assert.equal(h.video.controls, false);
+  view.setPanel(false); assert.equal(h.video.controls, false);
+  view.setPanel(true); view.setNativeControls(true); assert.equal(h.video.controls, false);
+  view.setPanel(false); assert.equal(h.video.controls, true); view.dispose();
 });

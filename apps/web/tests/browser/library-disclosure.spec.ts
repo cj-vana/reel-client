@@ -136,9 +136,8 @@ for (const width of [390, 1440]) {
     await expect(page.locator('.browse-selection-bar')).toHaveCount(0);
     await page.setViewportSize({ width, height: 900 });
     await page.getByRole('button', { name: 'List', exact: true }).click();
+    // A reload comes back to the Library, in the view that was chosen.
     await page.reload();
-    await expect(page.locator('.hero')).toBeVisible();
-    await page.locator('#rail').getByRole('button', { name: 'Library', exact: true }).click();
     await expect(page.locator('.browse-list')).toBeVisible();
     await expect(panel).toHaveJSProperty('open', false);
     await toggle.click();

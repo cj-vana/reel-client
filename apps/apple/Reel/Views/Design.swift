@@ -113,6 +113,60 @@ struct FoldSpread: Equatable {
     var trailingStart: CGFloat { crease.maxX }
 }
 
+/// Columns for a grid of posters or rows. On an open foldable each page holds its own columns and
+/// the wider gap between the two pages spans the crease, so no poster or title sits on the fold.
+struct PosterGrid: Equatable {
+    /// Columns in a row, across both pages when there are two.
+    let count: Int
+    /// Width of one column.
+    let width: CGFloat
+    /// On a spread: the columns on the left page, and the gap that carries the row over the crease.
+    let pageColumns: Int?
+    let pageGap: CGFloat?
+    /// The narrowest poster on a page of an open foldable.
+    static let spreadMinimum: CGFloat = 132
+
+    /// - Parameters:
+    ///   - availableWidth: the grid's full width, margins included.
+    ///   - minimum: the narrowest a column may be before one fewer is used.
+    ///   - single: one column a page (a list), instead of as many as fit.
+    ///   - spread: the two pages, in the grid's own coordinates, when the screen is an open foldable.
+    static func resolve(availableWidth: CGFloat, margin: CGFloat, minimum: CGFloat, spacing: CGFloat,
+                        single: Bool, spread: FoldSpread?) -> PosterGrid {
+        if let spread {
+            // Half a gutter is kept on each side of the crease, so the pages read as one grid.
+            let left = spread.leadingWidth - margin - spacing / 2
+            let right = availableWidth - spread.trailingStart - margin - spacing / 2
+            // A page is narrower than a phone screen, so posters may be a little smaller here: two
+            // to a page read better than one poster filling it.
+            let pageMinimum = single ? minimum : min(minimum, Self.spreadMinimum)
+            if min(left, right) >= pageMinimum {
+                // The pages can differ in width (a side strip takes part of one). Both hold the same
+                // number of columns at the narrower page's width, so the spread reads as two matching
+                // pages; the wider page keeps its spare room beside the crease.
+                let page = min(left, right)
+                let columns = single ? 1 : max(1, Int((page + spacing) / (pageMinimum + spacing)))
+                let width = (page - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                let leftEnd = margin + CGFloat(columns) * width + CGFloat(columns - 1) * spacing
+                return PosterGrid(count: columns * 2, width: width, pageColumns: columns,
+                                  pageGap: spread.trailingStart + spacing / 2 - leftEnd)
+            }
+        }
+        let content = availableWidth - 2 * margin
+        let count = single ? 1 : max(2, Int((content + spacing) / (minimum + spacing)))
+        return PosterGrid(count: count, width: max(80, (content - CGFloat(count - 1) * spacing) / CGFloat(count)),
+                          pageColumns: nil, pageGap: nil)
+    }
+
+    /// Flexible columns on one page; fixed columns with the crease gap on a spread.
+    func columns(spacing: CGFloat) -> [GridItem] {
+        guard let pageColumns, let pageGap else {
+            return Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .top), count: count)
+        }
+        return (0..<count).map { GridItem(.fixed(width), spacing: $0 == pageColumns - 1 ? pageGap : spacing, alignment: .top) }
+    }
+}
+
 /// Keeps a list or form to a readable column on a wide screen, and to the left page of an open
 /// foldable, so its rows neither stretch across an iPad nor run over the crease.
 struct ReadableColumn: ViewModifier {

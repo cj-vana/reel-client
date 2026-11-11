@@ -24,9 +24,14 @@ On Roku, Skip Intro needs intro markers from your server; every other app also f
 - Windows and Linux desktop packages are unsigned, and Windows SmartScreen may block a downloaded copy. The Mac app is signed and notarized when the release says so; an unsigned one may be blocked by Gatekeeper. Use a build you made yourself, or approve it under your system's own rules.
 - Remembered connections are not available in the Linux desktop app yet. Sign-in lasts for the session.
 - Some LG MP4 files seek to the keyframe before the requested time, so media with widely spaced keyframes can resume a little early.
+- The LG remote's Play, Pause, Stop, Rewind and Fast forward keys are handled by their standard key names and codes, but have not been pressed on a physical TV yet.
 - The Samsung app has not been tried on a physical TV yet. Installing it, the on-screen keyboard and playback may need fixes.
 - The Roku channel has not been tried on a physical Roku yet, and the Roku simulator cannot test HTTPS servers.
-- On iPhone Duo, the player has tabletop and book layouts for a half-folded phone. The book layout has been tried in the simulator, half open. Tabletop has only been tried with a simulated fold, and neither layout on a physical phone.
+- On iPhone Duo, the player has tabletop and book layouts for a half-folded phone. Both have been tried in the simulator, half open, and neither on a physical phone.
+- The web app's layouts for foldable Android devices have been tried with Chrome's fold emulation, not on a physical foldable. Android itself has no app; these layouts are for the browser and the installed web app. The double tap to seek on a half-folded screen has been tried with emulated touches only.
+- In a browser, the screen stays on during playback only on a secure page (HTTPS, or the same computer), because browsers offer that to secure pages only. A plain HTTP address on your home network plays as before, and the device's own sleep timer applies.
+- The keyboard's media keys and a headset's buttons are passed on by the browser. Reel sets them up in Chrome, Edge, Safari and Firefox, but they have not been pressed on hardware.
+- A link opened while signed out is kept until you sign in on that page. Reloading the sign-in page first forgets it.
 - HDR, passthrough and long playback sessions depend on the device and are not guaranteed.
 
 ## Build modes

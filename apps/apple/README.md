@@ -6,8 +6,8 @@ A SwiftUI app for iPhone, iPhone Duo and iPad running iOS or iPadOS 27.0 or late
 
 The app reads the fold of a book-style foldable from the window, so the same code covers the folded outer screen and the open inner one:
 
-- `FoldSpread` (`Reel/Views/Design.swift`) splits an open screen into two pages either side of the crease when each page can hold a readable column. Home, Details and Library keep text and controls on one page; only artwork crosses the crease.
-- `PlayerStage` (`Reel/Views/PlayerView.swift`) puts the video above the fold and the controls below it when the phone stands half open (tabletop), and keeps the transport clear of the fold when it is held like a book. It is plain geometry, so `ReelTests` checks it without the hardware.
+- `FoldSpread` (`Reel/Views/Design.swift`) splits an open screen into two pages either side of the crease when each page can hold a readable column. Home, Details and Library keep text and controls on one page; only artwork crosses the crease. The Library and Search grids (`PosterGrid`) give each page its own poster columns and leave the crease as the gap between them.
+- `PlayerStage` (`Reel/Views/PlayerView.swift`) puts the video above the fold and the controls below it when the phone stands half open (tabletop), and puts the transport and the timeline on the right-hand page when it is held like a book, so no control sits on the fold. It is plain geometry, so `ReelTests` checks it without the hardware.
 
 ## Build and run
 
