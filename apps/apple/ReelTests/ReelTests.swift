@@ -703,6 +703,45 @@ final class ReelTests: XCTestCase {
         XCTAssertEqual(ReadableColumn.layout(width: view.width, spread: spread), .leftPage(trailing: 415))
     }
 
+    func testPosterGridKeepsEveryColumnOffTheCreaseOfAnOpenFold() throws {
+        // One page: as many posters as fit, never fewer than two, and rows are one column.
+        let phone = PosterGrid.resolve(availableWidth: 402, margin: 20, minimum: 150, spacing: 16, single: false, spread: nil)
+        XCTAssertEqual(phone.count, 2); XCTAssertEqual(phone.width, 173); XCTAssertNil(phone.pageColumns); XCTAssertNil(phone.pageGap)
+        XCTAssertEqual(PosterGrid.resolve(availableWidth: 300, margin: 20, minimum: 150, spacing: 16, single: false, spread: nil).count, 2)
+        XCTAssertEqual(PosterGrid.resolve(availableWidth: 1032, margin: 40, minimum: 160, spacing: 16, single: false, spread: nil).count, 5)
+        XCTAssertEqual(PosterGrid.resolve(availableWidth: 402, margin: 20, minimum: 150, spacing: 16, single: true, spread: nil).count, 1)
+
+        // The open inner screen: each page holds its own columns and the gap between them spans the crease.
+        let view = CGRect(x: 0, y: 0, width: 866, height: 669)
+        let crease = CGRect(x: 471, y: 0, width: 9, height: 669)
+        let spread = try XCTUnwrap(FoldSpread(crease: crease, in: view))
+        for (single, minimum) in [(false, CGFloat(160)), (false, 150), (true, 160)] {
+            let grid = PosterGrid.resolve(availableWidth: view.width, margin: 28, minimum: minimum, spacing: 16, single: single, spread: spread)
+            let pageColumns = try XCTUnwrap(grid.pageColumns), pageGap = try XCTUnwrap(grid.pageGap)
+            // Both pages hold the same number of columns, at the narrower page's width.
+            XCTAssertEqual(pageColumns, single ? 1 : 2); XCTAssertEqual(grid.count, pageColumns * 2)
+            // Walk the columns as the grid lays them out and check each against the crease and the margins.
+            var x: CGFloat = 28
+            for column in 0..<grid.count {
+                let frame = CGRect(x: x, y: 0, width: grid.width, height: 10)
+                XCTAssertFalse(frame.intersects(crease), "column \(column) at \(frame.minX)-\(frame.maxX)")
+                XCTAssertEqual(frame.maxX <= crease.minX, column < pageColumns, "column \(column)")
+                x = frame.maxX + (column == pageColumns - 1 ? pageGap : 16)
+            }
+            XCTAssertEqual(x - 16, view.width - 28, accuracy: 0.01, "the last column ends on the trailing margin")
+            XCTAssertGreaterThanOrEqual(grid.width, single ? minimum : PosterGrid.spreadMinimum)
+            XCTAssertEqual(grid.columns(spacing: 16).count, grid.count)
+        }
+        // A page too narrow for one column falls back to the single-page grid.
+        let cramped = try XCTUnwrap(FoldSpread(crease: CGRect(x: 300, y: 0, width: 9, height: 669), in: CGRect(x: 0, y: 0, width: 620, height: 669)))
+        XCTAssertNil(PosterGrid.resolve(availableWidth: 620, margin: 180, minimum: 220, spacing: 16, single: false, spread: cramped).pageColumns)
+        // The open Duo simulator: a 25 point crease leaves two 322 point pages, which hold two posters each
+        // at the smaller spread minimum, not one poster filling each page.
+        let duo = try XCTUnwrap(FoldSpread(crease: CGRect(x: 471, y: 0, width: 25, height: 669), in: view))
+        let open = PosterGrid.resolve(availableWidth: 866, margin: 40, minimum: 160, spacing: 16, single: false, spread: duo)
+        XCTAssertEqual(open.count, 4); XCTAssertEqual(open.pageColumns, 2); XCTAssertEqual(open.width, 153, accuracy: 0.01)
+    }
+
     func testNarrowRegularWindowsUseTighterMargins() {
         XCTAssertEqual(AdaptiveLayout.margin(regular: false, width: 466), 20)
         XCTAssertEqual(AdaptiveLayout.margin(regular: true, width: 626), 28)
